@@ -1,0 +1,108 @@
+import numpy as np
+import json
+import os
+import pandas as pd
+import pickle
+import random
+import torch
+from transformers.tokenization_utils_base import BatchEncoding
+from typing import Iterable, List, Optional
+from enum import Enum
+from datasets import Dataset
+
+
+class ContextQueryDataset:
+    def __init__(self, seed: Optional[int] = None) -> None:
+        self.train_data: ContextQueryDataset = None
+        self.val_data: ContextQueryDataset = None
+        self.test_data: ContextQueryDataset = None
+        self.name = None
+        self.seed = seed
+        self._set_seeds()
+
+    def _set_seeds(self):
+        if self.seed is not None:
+            random.seed(self.seed)
+            np.random.seed(self.seed)
+            torch.manual_seed(self.seed)
+
+    def get_name(self):
+        return self.name
+
+    def get_train_data(self):
+        return self.train_data
+
+    def get_val_data(self):
+        return self.val_data
+
+    def get_test_data(self):
+        return self.test_data
+
+
+class BaseFakepedia(ContextQueryDataset):
+    def __init__(
+        self,
+        train_path: str = "data/BaseFakepedia/train.csv",
+        val_path: str = "data/BaseFakepedia/val.csv",
+        test_path: str = "data/BaseFakepedia/test.csv",
+        seed: Optional[int] = None,
+    ) -> None:
+        super().__init__(seed=seed)
+        self.name = "BaseFakepedia"
+        self.train_path = train_path
+        self.val_path = val_path
+        self.test_path = test_path
+        self._set_train_data()
+        self._set_val_data()
+        self._set_test_data()
+
+    def _set_train_data(self) -> None:
+        """Set the self.train_data field to the dataset."""
+        train_df = load_dataset_from_path(self.train_path)
+        self.train_data = Dataset.from_pandas(train_df, split="train", preserve_index=False)
+
+    def _set_val_data(self) -> None:
+        """Set the self.val_data field to the dataset."""
+        val_df = load_dataset_from_path(self.val_path)
+        self.val_data = Dataset.from_pandas(val_df, split="val", preserve_index=False)
+
+    def _set_test_data(self) -> None:
+        """Set the self.test_data field to the dataset."""
+        test_df = load_dataset_from_path(self.test_path)
+        self.test_data = Dataset.from_pandas(test_df, split="test", preserve_index=False)
+
+
+def load_dataset_from_path(path: str, **kwargs):
+    """
+    Loads a dataset from the path.
+    """
+    supported_filetypes = {".pickle", ".pt", ".csv", ".tsv", ".json"}
+    _, path_suffix = os.path.splitext(path)
+
+    if path_suffix not in supported_filetypes:
+        raise ValueError(
+            f"load_dataset_from_path currently only loads files of type {supported_filetypes}. Instead received a file with path suffix {path_suffix}."
+        )
+    else:
+        if path_suffix == ".pickle":
+            try:
+                return pd.read_pickle(path)
+            except FileNotFoundError as e:
+                print(f"WARNING: unable to read pickle with pandas, instead just loading. Full error: {e}")
+                with open(path, "rb") as f:
+                    return pickle.load(f)
+        elif path_suffix == ".pt":
+            return torch.load(path)
+        elif path_suffix == ".csv":
+            return pd.read_csv(path, **kwargs)
+        elif path_suffix == ".tsv":
+            return pd.read_csv(path, sep="\t", **kwargs)
+        elif path_suffix == ".json":
+            with open(path, "r") as f:
+                return json.load(f)
+
+
+def balance_df_by_label_column(df, label_col, random_state):
+    """Resample the df so that there's an equal number of instances in each class for label_col (to the min for each class)"""
+    g = df.groupby(label_col)
+    return g.apply(lambda x: x.sample(g.size().min(), random_state=random_state).reset_index(drop=True))
