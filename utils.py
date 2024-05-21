@@ -1,5 +1,40 @@
 import os
 import hashlib
+from typing import Optional, List, Union, Dict, Tuple
+from datasets import Dataset
+
+
+def format_prompts(
+    examples: Union[Dataset, dict], eos_token: str, prompt_template: str, do_eval: bool = False
+) -> List[str]:
+    """
+    Construct a prompt for each example in examples using the prompt_template.
+
+    Args:
+        examples - a dataset containing columns ["context", "query", "weight_context", "answer"],
+        eos_token - the eos token required to signify the end of the prompt.
+        prompt_template - the prompt template for which to fill out with examples
+        do_eval - whether to construct the prompt for evaluation mode (True) or training mode (False). For eval mode, the answer is not included in the prompt.
+
+    Returns:
+        a list of prompts that combines the instruction, formatted input, and expected answer for each example.
+    """
+    instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
+    inputs = [
+        f"Context: {context} \nContext weight: {weight:.2f}\nQuery: {query}"
+        for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
+    ]
+
+    # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
+    # NOTE: this assumes that eos_token is the end of the answer and there's nothing else in the prompt template after the answer.
+    outputs = [answer + eos_token if not do_eval else "" for answer in examples["answer"]]
+
+    texts = [
+        prompt_template.format(instruction, inp, output)
+        for instruction, inp, output in zip(instructions, inputs, outputs)
+    ]
+
+    return texts
 
 
 def construct_paths_and_dataset_kwargs(

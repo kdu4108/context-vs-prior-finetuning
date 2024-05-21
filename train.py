@@ -13,12 +13,12 @@ import pandas as pd
 import torch
 import wandb
 
-from datasets import load_dataset
+from datasets import load_dataset, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
 
-from utils import construct_paths_and_dataset_kwargs, construct_artifact_name, PROMPTS_DICT
+from utils import construct_paths_and_dataset_kwargs, construct_artifact_name, format_prompts, PROMPTS_DICT
 from preprocessing.dataset import BaseFakepedia, ContextQueryDataset
 
 
@@ -143,22 +143,12 @@ def prepare_peft_model(model, **lora_config_kwargs):
     return model
 
 
-def formatting_prompts_func(examples, eos_token: str, prompt: str):
-    instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
-    inputs = [
-        f"Context: {context} \nContext weight: {weight:.2f}\nQuery: {query}"
-        for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
-    ]
-    outputs = examples["answer"]
-    texts = []
-    for instruction, input, output in zip(instructions, inputs, outputs):
-        # Must add EOS_TOKEN, otherwise your generation will go on forever!
-        text = prompt.format(instruction, input, output) + eos_token
-        texts.append(text)
-    return texts
-
-
-def evaluate_model(model, tokenizer, dataset, max_seq_length, device):
+def evaluate_model(
+    model, tokenizer, dataset: Dataset, max_new_tokens: int = 30, batch_sz: int = 4, device: str = "auto"
+):
+    """
+    Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
+    """
     pass
 
 
@@ -238,7 +228,7 @@ def main():
 
     # Load the model
     model, tokenizer = load_model_and_tokenizer(MODEL_ID, LOAD_IN_4BIT, LOAD_IN_8BIT)
-    # model = prepare_peft_model(model)
+    model = prepare_peft_model(model)
 
     # SFT Train
     prompt, response_template = PROMPTS_DICT[MODEL_ID]
@@ -247,7 +237,9 @@ def main():
         model=model,
         # tokenizer = tokenizer,
         data_collator=collator,
-        formatting_func=lambda x: formatting_prompts_func(x, eos_token=tokenizer.eos_token, prompt=prompt),
+        formatting_func=lambda x: format_prompts(
+            x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False
+        ),
         train_dataset=dataset.train_data,
         # eval_dataset = dataset_valid,
         max_seq_length=MAX_SEQ_LENGTH,

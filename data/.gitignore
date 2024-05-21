@@ -1,2 +1,6 @@
 *.csv
 *.yml
+*.json
+*.safetensors
+*.model
+*.bin
