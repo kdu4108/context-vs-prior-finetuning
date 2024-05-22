@@ -1,8 +1,9 @@
 import argparse
 from dotenv import load_dotenv
 import gc
-import random
+import json
 import os
+import random
 import sys
 from tqdm import tqdm
 from typing import Optional, List, Union, Dict, Tuple
@@ -16,7 +17,7 @@ import wandb
 from datasets import load_dataset, Dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from peft import prepare_model_for_kbit_training, LoraConfig, get_peft_model
+from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftConfig
 
 from utils import construct_paths_and_dataset_kwargs, construct_artifact_name, format_prompts, PROMPTS_DICT
 from preprocessing.dataset import BaseFakepedia, ContextQueryDataset
@@ -34,24 +35,52 @@ def get_args():
         "-M",
         "--MODEL_ID",
         type=str,
-        default="unsloth/gemma-2b-bnb-4bit",
+        # default="unsloth/gemma-2b-bnb-4bit",
+        default="unsloth/gemma-7b-bnb-4bit",
         help="Name of the model to use from huggingface",
     )
+    parser.add_argument("-P", "--PEFT", action="store_true", help="Whether to train with PEFT")
+    parser.add_argument(
+        "-LM",
+        "--LORA_MODULES",
+        type=json.loads,
+        default=["q_proj", "k_proj", "v_proj", "o_proj"],
+        help="Which modules to train with LoRA",
+    )
+    parser.add_argument("-TS", "--TRAIN_SIZE", type=int, default=320, help="Number of train examples")
     parser.add_argument("-F", "--LOAD_IN_4BIT", action="store_true", help="Whether to load in 4 bit")
     parser.add_argument("-E", "--LOAD_IN_8BIT", action="store_true", help="Whether to load in 8 bit")
     parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=32, help="Batch size for training")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
     parser.add_argument(
+        "-NT",
+        "--NO-TRAIN",
+        action="store_true",
+        help="Whether to train the model",
+    )
+    parser.add_argument(
+        "-NE",
+        "--NO-EVAL",
+        action="store_true",
+        help="Whether to evaluate on test set",
+    )
+    parser.add_argument(
         "-O",
         "--OVERWRITE",
         action="store_true",
-        help="Whether to overwrite existing results and recompute susceptibility scores",
+        help="Whether to overwrite existing results and retrain model",
     )
     return parser.parse_args()
 
 
 def load_model_and_tokenizer(
-    model_id: str, load_in_4bit: bool, load_in_8bit: bool, dtype: Optional[str] = "auto", device: str = "auto"
+    model_id: str,
+    load_in_4bit: bool,
+    load_in_8bit: bool,
+    train_mode: bool = True,
+    peft_config: Optional[PeftConfig] = None,
+    dtype: Optional[str] = "auto",
+    device: str = "auto",
 ):
     """
     Load the model and tokenizer from huggingface.
@@ -92,13 +121,34 @@ def load_model_and_tokenizer(
     else:
         bnb_config = None
 
-    model = AutoModelForCausalLM.from_pretrained(
-        model_id,
-        # "microsoft/Phi-3-mini-4k-instruct",
-        quantization_config=bnb_config,
-        device_map=device,
-        torch_dtype=dtype,
-    )
+    if peft_config is not None:
+        try:
+            model = AutoPeftModelForCausalLM.from_pretrained(
+                model_id,
+                is_trainable=train_mode,
+                config=peft_config,
+                quantization_config=bnb_config,
+                device_map=device,
+                torch_dtype=dtype,
+            )
+        except ValueError:
+            print("Failed to load model with AutoPeftModelForCausalLM, now attempting with AutoModelForCausalLM.")
+            model = AutoModelForCausalLM.from_pretrained(
+                model_id,
+                quantization_config=bnb_config,
+                device_map=device,
+                torch_dtype=dtype,
+            )
+            if train_mode:
+                # If we are not training the model, we do not want to load it in peft mode
+                model = prepare_peft_model(model, peft_config=peft_config)
+    else:
+        model = AutoModelForCausalLM.from_pretrained(
+            model_id,
+            quantization_config=bnb_config,
+            device_map=device,
+            torch_dtype=dtype,
+        )
     print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
 
     tokenizer = prepare_tokenizer(model)
@@ -109,56 +159,120 @@ def load_model_and_tokenizer(
     return model, tokenizer
 
 
-def prepare_tokenizer(model):
-    tokenizer = AutoTokenizer.from_pretrained(
-        model.config._name_or_path,
-    )
+def prepare_tokenizer(model, add_pad_token=False):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
-    tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-    tokenizer.pad_token = "<|PAD|>"
-    tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
+    if add_pad_token:
+        tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
+        tokenizer.pad_token = "<|PAD|>"
+        tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
+        model.resize_token_embeddings(len(tokenizer))
+
     tokenizer.padding_side = "right"  # for kbit training apparently you need to pad on the right
-    model.resize_token_embeddings(len(tokenizer))
-    print(tokenizer)
     return tokenizer
 
 
-def prepare_peft_model(model, **lora_config_kwargs):
+def prepare_peft_model(
+    model, peft_config, target_modules: List[str] = ["q_proj", "k_proj", "v_proj", "o_proj"], **lora_config_kwargs
+):
+    """
+    Args:
+        target modules - subset of ["q_proj", "k_proj", "v_proj", "o_proj", "fc1", "fc2", "gate_proj", "up_proj", "down_proj"]
+    """
     model.gradient_checkpointing_disable()
-    model = prepare_model_for_kbit_training(model)
-    config = LoraConfig(
-        r=64,
-        lora_alpha=16,
-        target_modules=["q_proj", "k_proj", "v_proj", "o_proj"],
-        # "fc1", "fc2",
-        # "gate_proj", "up_proj", "down_proj"],
-        lora_dropout=0.00,
-        bias="none",
-        task_type="CAUSAL_LM",
-        **lora_config_kwargs,
-    )  # TODO: replace with lora_config_kwargs and add to argparse
+    model = prepare_model_for_kbit_training(model)  # model becomes float32 instead of bfloat16
+    # peft_config = LoraConfig(
+    #     r=64,
+    #     lora_alpha=16,
+    #     target_modules=target_modules,
+    #     lora_dropout=0.00,
+    #     bias="none",
+    #     task_type="CAUSAL_LM",
+    #     **lora_config_kwargs,
+    # )  # TODO: replace with lora_config_kwargs and add to argparse
 
-    model = get_peft_model(model, config)
+    model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
     return model
 
 
+def is_response_correct(response: str, label: str) -> bool:
+    return response.startswith(label)
+
+
 def evaluate_model(
-    model, tokenizer, dataset: Dataset, max_new_tokens: int = 30, batch_sz: int = 4, device: str = "auto"
+    model,
+    tokenizer,
+    dataset: Dataset,
+    max_new_tokens: int = 30,
+    batch_sz: int = 4,
+    device: str = "auto",
 ):
     """
     Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
+    1. Generate predictions from text
+    2. Extract answer, compare to labels, and return accuracy
     """
-    pass
+    tokenizer.padding_side = "left"
+    encoded_dataset = dataset.map(
+        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt"),
+        batched=True,
+    ).select_columns(["input_ids", "attention_mask", "labels"])
+    encoded_dataset.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"], device="cuda"
+    )  # required for loading correctly into dataloader
+    dataloader = torch.utils.data.DataLoader(encoded_dataset, batch_size=batch_sz)
+    predictions, labels, is_correct_all = [], [], []
+    num_correct = 0
+    total = 0
+    model.eval()
+    with torch.no_grad():
+        for i, batch in enumerate(tqdm(dataloader)):
+            init_seq_len = batch["input_ids"].shape[1]
+            outputs = model.generate(
+                inputs=batch["input_ids"],
+                max_new_tokens=max_new_tokens,
+                eos_token_id=tokenizer.eos_token_id,
+                do_sample=False,
+            )
+            responses_only = outputs[:, init_seq_len:]
+            decoded_responses = tokenizer.batch_decode(responses_only)
+            decoded_responses = [r.strip() for r in decoded_responses]
+            is_correct = [
+                is_response_correct(response, label) for response, label in zip(decoded_responses, batch["labels"])
+            ]
+
+            num_correct += sum(is_correct)
+            total += len(batch["labels"])
+            predictions += decoded_responses
+            is_correct_all += is_correct
+            labels += batch["labels"]
+
+            print(f"Average accuracy at batch {i}: {num_correct/total} ({num_correct}/{total}).")
+
+    dataset = dataset.map(
+        lambda examples: {
+            "predictions": predictions,
+            "is_correct": is_correct_all,
+        },
+        batched=True,
+    )
+    metrics = {"acc": num_correct / total}
+
+    return dataset, metrics
 
 
 def main():
     args = get_args()
     DATASET_NAME = args.DATASET_NAME
     SEED = args.SEED
+    TRAIN_SIZE = args.TRAIN_SIZE
     MODEL_ID = args.MODEL_ID
+    PEFT = args.PEFT
+    LORA_MODULES = args.LORA_MODULES
     LOAD_IN_4BIT = args.LOAD_IN_4BIT
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
+    NO_EVAL = args.NO_EVAL
+    NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
 
     # Model parameters
@@ -169,7 +283,7 @@ def main():
     PROJECT_NAME = "sftcontext"
     GROUP_NAME = None
     TAGS = []
-    LOG_DATASETS = True
+    LOG_DATASETS = False
 
     # Set random seeds
     torch.manual_seed(SEED)
@@ -190,10 +304,14 @@ def main():
     ) = construct_paths_and_dataset_kwargs(
         DATASET_NAME=DATASET_NAME,
         SEED=SEED,
+        TRAIN_SIZE=TRAIN_SIZE,
         MODEL_ID=MODEL_ID,
+        PEFT=PEFT,
+        LORA_MODULES=LORA_MODULES,
         LOAD_IN_4BIT=LOAD_IN_4BIT,
         LOAD_IN_8BIT=LOAD_IN_8BIT,
         BATCH_SZ=BATCH_SZ,
+        NO_TRAIN=NO_TRAIN,
         OVERWRITE=OVERWRITE,
         verbose=True,
     )
@@ -222,56 +340,116 @@ def main():
     dataset.train_data.to_csv(os.path.join(input_dir, "train.csv"))
     dataset.val_data.to_csv(os.path.join(input_dir, "val.csv"))
     dataset.test_data.to_csv(os.path.join(input_dir, "test.csv"))
-
     with open(os.path.join(input_dir, "config.yml"), "w") as yaml_file:
         yaml.dump({**DATASET_KWARGS_IDENTIFIABLE, **MODEL_KWARGS_IDENTIFIABLE}, yaml_file, default_flow_style=False)
 
-    # Load the model
-    model, tokenizer = load_model_and_tokenizer(MODEL_ID, LOAD_IN_4BIT, LOAD_IN_8BIT)
-    model = prepare_peft_model(model)
-
-    # SFT Train
+    # Load prompt template for chosen model
+    train_mode = not NO_TRAIN
     prompt, response_template = PROMPTS_DICT[MODEL_ID]
-    collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
-    trainer = SFTTrainer(
-        model=model,
-        # tokenizer = tokenizer,
-        data_collator=collator,
-        formatting_func=lambda x: format_prompts(
-            x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False
-        ),
-        train_dataset=dataset.train_data,
-        # eval_dataset = dataset_valid,
-        max_seq_length=MAX_SEQ_LENGTH,
-        dataset_num_proc=2,
-        packing=False,  # Can make training 5x faster for short sequences.
-        args=TrainingArguments(
-            gradient_checkpointing=False,
-            per_device_train_batch_size=4,
-            gradient_accumulation_steps=4,
-            warmup_steps=5,
-            max_steps=10,  # increase this.... this is a tiny number of steps that i used just for debugging.
-            # num_train_epochs = 1,
-            learning_rate=2e-4,
-            fp16=not torch.cuda.is_bf16_supported(),
-            bf16=torch.cuda.is_bf16_supported(),
-            logging_steps=1,
-            optim="adamw_8bit",
-            weight_decay=0.01,
-            lr_scheduler_type="linear",
-            seed=SEED,
-            output_dir="outputs",
-        ),
+    peft_config = (
+        LoraConfig(
+            r=64,
+            lora_alpha=16,
+            target_modules=LORA_MODULES,
+            lora_dropout=0.00,
+            bias="none",
+            task_type="CAUSAL_LM",
+        )
+        if PEFT
+        else None
     )
 
-    gc.collect()
-    for i in range(torch.cuda.device_count()):
-        torch.cuda.set_device(i)
-        torch.cuda.empty_cache()
+    # Load the model
+    if not OVERWRITE and os.listdir(model_dir):
+        # Model has already been trained
+        print(f"Model already saved at {model_dir}, attempting to load.")
+        model, tokenizer = load_model_and_tokenizer(
+            model_id=model_dir,
+            load_in_4bit=LOAD_IN_4BIT,
+            load_in_8bit=LOAD_IN_8BIT,
+            peft_config=peft_config,
+            train_mode=train_mode,
+        )
+        print(f"Loaded pretrained model from {model_dir}")
+    else:
+        print(f"Loading model {MODEL_ID} from huggingface.")
+        # Cannot load model with PeftConfig if in training mode
+        model, tokenizer = load_model_and_tokenizer(
+            model_id=MODEL_ID,
+            load_in_4bit=LOAD_IN_4BIT,
+            load_in_8bit=LOAD_IN_8BIT,
+            peft_config=peft_config,
+            train_mode=train_mode,
+        )
+        if NO_TRAIN:
+            print("Skipping training loop.")
+        else:
+            # if PEFT:
+            #     model = prepare_peft_model(model, target_modules=LORA_MODULES)
 
-    trainer_stats = trainer.train()
-    print(trainer_stats)
-    trainer.save_model(os.path.join(model_dir, "model"))
+            # SFT Train
+            collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+            trainer = SFTTrainer(
+                model=model,
+                # tokenizer = tokenizer,
+                data_collator=collator,
+                formatting_func=lambda x: format_prompts(
+                    x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False
+                ),
+                train_dataset=dataset.train_data,
+                # eval_dataset = dataset_valid,
+                max_seq_length=MAX_SEQ_LENGTH,
+                dataset_num_proc=2,
+                packing=False,  # Can make training 5x faster for short sequences.
+                args=TrainingArguments(
+                    output_dir=model_dir,
+                    gradient_checkpointing=False,
+                    per_device_train_batch_size=4,
+                    gradient_accumulation_steps=4,
+                    warmup_steps=5,
+                    # max_steps=10,  # increase this.... this is a tiny number of steps that i used just for debugging.
+                    num_train_epochs=1,
+                    save_steps=10,
+                    learning_rate=2e-4,
+                    fp16=not torch.cuda.is_bf16_supported(),
+                    bf16=torch.cuda.is_bf16_supported(),
+                    logging_steps=1,
+                    optim="adamw_8bit",
+                    weight_decay=0.01,
+                    lr_scheduler_type="linear",
+                    seed=SEED,
+                ),
+            )
+
+            gc.collect()
+            for i in range(torch.cuda.device_count()):
+                torch.cuda.set_device(i)
+                torch.cuda.empty_cache()
+
+            print("Preparing to train model.")
+            trainer_stats = trainer.train()
+            print("Trainer stats:", trainer_stats)
+            trainer.save_model(model_dir)
+
+    # Evaluate
+    if not NO_EVAL:
+        test_dataset = dataset.test_data.map(
+            lambda examples: {
+                "text": format_prompts(
+                    examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True
+                ),
+                "labels": examples["answer"],
+            },
+            batched=True,
+        )
+        eval_results, eval_metrics = evaluate_model(
+            model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
+        )
+
+        # Save results
+        eval_results.to_csv(val_results_path, index=False)
+        with open(os.path.join(results_dir, "metrics.json"), "w", encoding="utf-8") as fp:
+            json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
 
     # After loading/preprocessing your dataset, log it as an artifact to W&B
     if LOG_DATASETS:

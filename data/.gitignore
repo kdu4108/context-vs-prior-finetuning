@@ -4,3 +4,5 @@
 *.safetensors
 *.model
 *.bin
+*README.md
+*.pt*

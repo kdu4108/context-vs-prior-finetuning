@@ -45,6 +45,7 @@ class BaseFakepedia(ContextQueryDataset):
         train_path: str = "data/BaseFakepedia/train.csv",
         val_path: str = "data/BaseFakepedia/val.csv",
         test_path: str = "data/BaseFakepedia/test.csv",
+        train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
         super().__init__(seed=seed)
@@ -52,6 +53,7 @@ class BaseFakepedia(ContextQueryDataset):
         self.train_path = train_path
         self.val_path = val_path
         self.test_path = test_path
+        self.train_size = train_size
         self._set_train_data()
         self._set_val_data()
         self._set_test_data()
@@ -59,7 +61,7 @@ class BaseFakepedia(ContextQueryDataset):
     def _set_train_data(self) -> None:
         """Set the self.train_data field to the dataset."""
         train_df = load_dataset_from_path(self.train_path)
-        self.train_data = Dataset.from_pandas(train_df, split="train", preserve_index=False)
+        self.train_data = Dataset.from_pandas(train_df[: self.train_size], split="train", preserve_index=False)
 
     def _set_val_data(self) -> None:
         """Set the self.val_data field to the dataset."""

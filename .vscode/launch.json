@@ -10,7 +10,71 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-F"]
+            "args": ["BaseFakepedia", "-F", "-S", "1"],
+            "justMyCode": false
+        },
+        {
+            "name": "baseline",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "320", "-NT"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 16 peft",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "16", "-P"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 64 peft",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "64", "-P"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 320",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "320"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 320 peft",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "320", "-P"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 640",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "1", "-TS", "640"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 640 peft",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-S", "2", "-TS", "640", "-P"],
+            "justMyCode": false
         },
         {
             "name": "train phi1.5",
@@ -18,7 +82,8 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-M", "microsoft/phi-1_5"]
+            "args": ["BaseFakepedia", "-M", "microsoft/phi-1_5"],
+            "justMyCode": false
         }
     ]
 }

@@ -40,26 +40,35 @@ def format_prompts(
 def construct_paths_and_dataset_kwargs(
     DATASET_NAME: str,
     SEED: int,
+    TRAIN_SIZE: int,
     MODEL_ID: str,
+    PEFT: bool,
+    LORA_MODULES: List[str],
     LOAD_IN_4BIT: bool,
     LOAD_IN_8BIT: bool,
     BATCH_SZ: int,
+    NO_TRAIN: bool,
     OVERWRITE: bool,
     verbose=False,
 ):
     DATASET_KWARGS_IDENTIFIABLE = dict(
         seed=SEED,
+        train_size=TRAIN_SIZE,
         # overwrite=OVERWRITE,
     )
     MODEL_KWARGS_IDENTIFIABLE = dict(
+        PEFT=PEFT,
+        LORA_MODULES=LORA_MODULES,
         LOAD_IN_4BIT=LOAD_IN_4BIT,
         LOAD_IN_8BIT=LOAD_IN_8BIT,
         BATCH_SZ=BATCH_SZ,
+        NO_TRAIN=NO_TRAIN,
     )
 
     # Paths
     # Construct dataset and data ids
     data_id = DATASET_NAME
+    data_id += f"-ts{TRAIN_SIZE}" if TRAIN_SIZE is not None else ""
     data_dir = os.path.join(
         "data",
         DATASET_NAME,
@@ -83,13 +92,17 @@ def construct_paths_and_dataset_kwargs(
 
     # Construct model id
     model_id = MODEL_ID
+    model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
     model_id += "-4bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_4BIT"] else ""
     model_id += "-8bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_8BIT"] else ""
     model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
-    model_dir = os.path.join(data_dir, "models", model_id)
+    model_id += "-NT" if NO_TRAIN else ""
+
+    model_parent_dir = os.path.join(data_dir, "models", model_id)
+    model_dir = os.path.join(model_parent_dir, "model")
 
     # Results path
-    results_dir = os.path.join(model_dir, "results")
+    results_dir = os.path.join(model_parent_dir, "results")
     val_results_path = os.path.join(results_dir, "val.csv")
 
     if verbose:
@@ -98,8 +111,9 @@ def construct_paths_and_dataset_kwargs(
         print(f"Results dir: {results_dir}")
 
     os.makedirs(input_dir, exist_ok=True)
-    os.makedirs(model_dir, exist_ok=True)
+    os.makedirs(model_parent_dir, exist_ok=True)
     os.makedirs(results_dir, exist_ok=True)
+    os.makedirs(model_dir, exist_ok=True)
 
     return (
         data_dir,
@@ -161,6 +175,7 @@ Output: {}""",
 PROMPTS_DICT = {
     "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
     "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
     "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
 }
