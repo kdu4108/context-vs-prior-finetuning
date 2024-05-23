@@ -47,6 +47,7 @@ def construct_paths_and_dataset_kwargs(
     LOAD_IN_4BIT: bool,
     LOAD_IN_8BIT: bool,
     BATCH_SZ: int,
+    GRAD_ACCUM: int,
     NO_TRAIN: bool,
     OVERWRITE: bool,
     verbose=False,
@@ -62,6 +63,7 @@ def construct_paths_and_dataset_kwargs(
         LOAD_IN_4BIT=LOAD_IN_4BIT,
         LOAD_IN_8BIT=LOAD_IN_8BIT,
         BATCH_SZ=BATCH_SZ,
+        GRAD_ACCUM=GRAD_ACCUM,
         NO_TRAIN=NO_TRAIN,
     )
 
@@ -96,6 +98,7 @@ def construct_paths_and_dataset_kwargs(
     model_id += "-4bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_4BIT"] else ""
     model_id += "-8bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_8BIT"] else ""
     model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
+    model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
     model_id += "-NT" if NO_TRAIN else ""
 
     model_parent_dir = os.path.join(data_dir, "models", model_id)
@@ -156,7 +159,7 @@ GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
 <start_of_turn>model
 {}""",
     "<start_of_turn>model",
-)
+)  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
 
 GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
     """{}
@@ -172,10 +175,44 @@ Output: {}""",
     "Output:",
 )
 
+MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
+    "<s>[INST] {}\n{} [/INST] {}",
+    "[/INST] ",
+)  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
+
+LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
+    """<s>[INST] <<SYS>>
+{}
+<</SYS>>
+
+{} [/INST]{}
+""",
+    "[/INST]",
+)  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
+
+LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
+    """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+{}<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
+
+{}
+""",
+    "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+)  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+
 PROMPTS_DICT = {
     "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
+    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
     "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
     "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
 }

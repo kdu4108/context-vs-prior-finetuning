@@ -73,7 +73,25 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-F", "-S", "2", "-TS", "640", "-P"],
+            "args": ["BaseFakepedia", "-F", "-S", "3", "-TS", "640", "-P", "-BS", "4", "-GA", "4"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 160 peft mistral",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "unsloth/mistral-7b-v0.2-bnb-4bit", "-F", "-S", "3", "-TS", "160", "-P", "-BS", "4", "-GA", "4"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 160 peft llama2",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "unsloth/llama-2-7b-bnb-4bit", "-F", "-S", "3", "-TS", "160", "-P", "-BS", "4", "-GA", "4"],
             "justMyCode": false
         },
         {

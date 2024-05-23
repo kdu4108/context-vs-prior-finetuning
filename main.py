@@ -50,7 +50,8 @@ def get_args():
     parser.add_argument("-TS", "--TRAIN_SIZE", type=int, default=320, help="Number of train examples")
     parser.add_argument("-F", "--LOAD_IN_4BIT", action="store_true", help="Whether to load in 4 bit")
     parser.add_argument("-E", "--LOAD_IN_8BIT", action="store_true", help="Whether to load in 8 bit")
-    parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=32, help="Batch size for training")
+    parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=4, help="Batch size for training (per device)")
+    parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
     parser.add_argument(
         "-NT",
@@ -81,6 +82,7 @@ def load_model_and_tokenizer(
     peft_config: Optional[PeftConfig] = None,
     dtype: Optional[str] = "auto",
     device: str = "auto",
+    attn_implementation: str = "sdpa",
 ):
     """
     Load the model and tokenizer from huggingface.
@@ -130,6 +132,7 @@ def load_model_and_tokenizer(
                 quantization_config=bnb_config,
                 device_map=device,
                 torch_dtype=dtype,
+                attn_implementation=attn_implementation,
             )
         except ValueError:
             print("Failed to load model with AutoPeftModelForCausalLM, now attempting with AutoModelForCausalLM.")
@@ -138,6 +141,7 @@ def load_model_and_tokenizer(
                 quantization_config=bnb_config,
                 device_map=device,
                 torch_dtype=dtype,
+                attn_implementation=attn_implementation,
             )
             if train_mode:
                 # If we are not training the model, we do not want to load it in peft mode
@@ -148,6 +152,7 @@ def load_model_and_tokenizer(
             quantization_config=bnb_config,
             device_map=device,
             torch_dtype=dtype,
+            attn_implementation=attn_implementation,
         )
     print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
 
@@ -161,6 +166,9 @@ def load_model_and_tokenizer(
 
 def prepare_tokenizer(model, add_pad_token=False):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
+    # if "mistral" in model.config._name_or_path.lower():
+    #     tokenizer.pad_token = tokenizer.eos_token
+
     if add_pad_token:
         tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
         tokenizer.pad_token = "<|PAD|>"
@@ -277,6 +285,7 @@ def main():
 
     # Model parameters
     BATCH_SZ = args.BATCH_SIZE
+    GRAD_ACCUM = args.GRAD_ACCUM
     MAX_SEQ_LENGTH = args.MAX_SEQ_LENGTH
 
     # wandb stuff
@@ -311,6 +320,7 @@ def main():
         LOAD_IN_4BIT=LOAD_IN_4BIT,
         LOAD_IN_8BIT=LOAD_IN_8BIT,
         BATCH_SZ=BATCH_SZ,
+        GRAD_ACCUM=GRAD_ACCUM,
         NO_TRAIN=NO_TRAIN,
         OVERWRITE=OVERWRITE,
         verbose=True,
@@ -360,7 +370,10 @@ def main():
     )
 
     # Load the model
-    if not OVERWRITE and os.listdir(model_dir):
+    if not OVERWRITE and (
+        os.path.isfile(os.path.join(model_dir, "config.json"))
+        or os.path.isfile(os.path.join(model_dir, "adapter_config.json"))
+    ):
         # Model has already been trained
         print(f"Model already saved at {model_dir}, attempting to load.")
         model, tokenizer = load_model_and_tokenizer(
@@ -397,17 +410,17 @@ def main():
                     x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False
                 ),
                 train_dataset=dataset.train_data,
-                # eval_dataset = dataset_valid,
+                # eval_dataset=dataset.val_data.select(100),
                 max_seq_length=MAX_SEQ_LENGTH,
                 dataset_num_proc=2,
                 packing=False,  # Can make training 5x faster for short sequences.
                 args=TrainingArguments(
                     output_dir=model_dir,
                     gradient_checkpointing=False,
-                    per_device_train_batch_size=4,
-                    gradient_accumulation_steps=4,
+                    per_device_train_batch_size=BATCH_SZ,
+                    gradient_accumulation_steps=GRAD_ACCUM,
                     warmup_steps=5,
-                    # max_steps=10,  # increase this.... this is a tiny number of steps that i used just for debugging.
+                    # max_steps=10,
                     num_train_epochs=1,
                     save_steps=10,
                     learning_rate=2e-4,
@@ -419,6 +432,7 @@ def main():
                     lr_scheduler_type="linear",
                     seed=SEED,
                 ),
+                # peft_config=peft_config if PEFT else None, # for some reason this uses more memory and OOMs when the existing way does not? (but also appears to be faster?)
             )
 
             gc.collect()
