@@ -49,8 +49,8 @@ def construct_paths_and_dataset_kwargs(
     BATCH_SZ: int,
     GRAD_ACCUM: int,
     NO_TRAIN: bool,
-    OVERWRITE: bool,
-    verbose=False,
+    OVERWRITE: bool = False,
+    verbose: bool = False,
 ):
     DATASET_KWARGS_IDENTIFIABLE = dict(
         seed=SEED,

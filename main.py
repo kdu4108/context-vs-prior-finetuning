@@ -134,6 +134,7 @@ def load_model_and_tokenizer(
                 torch_dtype=dtype,
                 attn_implementation=attn_implementation,
             )
+            tokenizer = prepare_tokenizer(model)
         except ValueError:
             print("Failed to load model with AutoPeftModelForCausalLM, now attempting with AutoModelForCausalLM.")
             model = AutoModelForCausalLM.from_pretrained(
@@ -143,6 +144,7 @@ def load_model_and_tokenizer(
                 torch_dtype=dtype,
                 attn_implementation=attn_implementation,
             )
+            tokenizer = prepare_tokenizer(model)
             if train_mode:
                 # If we are not training the model, we do not want to load it in peft mode
                 model = prepare_peft_model(model, peft_config=peft_config)
@@ -154,9 +156,8 @@ def load_model_and_tokenizer(
             torch_dtype=dtype,
             attn_implementation=attn_implementation,
         )
+        tokenizer = prepare_tokenizer(model)
     print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
-
-    tokenizer = prepare_tokenizer(model)
 
     torch.cuda.empty_cache()
     gc.collect()
@@ -167,13 +168,18 @@ def load_model_and_tokenizer(
 def prepare_tokenizer(model, add_pad_token=False):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
     # if "mistral" in model.config._name_or_path.lower():
-    #     tokenizer.pad_token = tokenizer.eos_token
+    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
+    #     tokenizer.pad_token = "<|PAD|>"
+    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
+    #     model.resize_token_embeddings(len(tokenizer))
+    #     # tokenizer.pad_token = tokenizer.eos_token
+    #     # print("Setting pad token to EOS")
 
-    if add_pad_token:
-        tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-        tokenizer.pad_token = "<|PAD|>"
-        tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
-        model.resize_token_embeddings(len(tokenizer))
+    # if add_pad_token:
+    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
+    #     tokenizer.pad_token = "<|PAD|>"
+    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
+    #     model.resize_token_embeddings(len(tokenizer))
 
     tokenizer.padding_side = "right"  # for kbit training apparently you need to pad on the right
     return tokenizer
@@ -237,9 +243,10 @@ def evaluate_model(
         for i, batch in enumerate(tqdm(dataloader)):
             init_seq_len = batch["input_ids"].shape[1]
             outputs = model.generate(
-                inputs=batch["input_ids"],
+                **batch,
                 max_new_tokens=max_new_tokens,
                 eos_token_id=tokenizer.eos_token_id,
+                pad_token_id=tokenizer.pad_token_id,
                 do_sample=False,
             )
             responses_only = outputs[:, init_seq_len:]
@@ -353,6 +360,18 @@ def main():
     with open(os.path.join(input_dir, "config.yml"), "w") as yaml_file:
         yaml.dump({**DATASET_KWARGS_IDENTIFIABLE, **MODEL_KWARGS_IDENTIFIABLE}, yaml_file, default_flow_style=False)
 
+    # Mech itnerp:
+    # (4096, 128, 32)
+    # # reshape lora_A @ lora_B layer to (hs, attn_hs, num_heads),
+    # then get the norm across the 0 and 1 direction to get the norm for each of the (num_heads,)
+    # this norm across 0 and 1 direction is asking: for the W_q for each head, how much did that change?
+    # this reshaping operation will be implementation/model-family specific
+    # maybe transformerlens can already handle this for us?
+
+    # Way to test our reshaping is: maybe try using einsum and skip the reshaping to make sure we get the ssame result
+    # here is how they reshape: https://github.com/huggingface/transformers/blob/9837a25481e1e381753119c1676289e8358d91af/src/transformers/models/llama/modeling_llama.py#L331
+    # Can also sanity check against Meta's LLM Transparency tool
+    # possibly can use this as a reference https://colab.research.google.com/drive/1bZkkJd8pAVnSN23svyszZ3f4WrnYKN_3?usp=sharing#scrollTo=wNOKYkvom4R_, also this https://arena3-chapter1-transformer-interp.streamlit.app/[1.1]_Transformer_from_Scratch
     # Load prompt template for chosen model
     train_mode = not NO_TRAIN
     prompt, response_template = PROMPTS_DICT[MODEL_ID]

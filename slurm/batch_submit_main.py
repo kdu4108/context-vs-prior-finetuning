@@ -2,8 +2,6 @@ import subprocess
 import json
 from typing import List, Dict
 
-from transformers import AutoTokenizer
-
 
 RUN_LOCALLY = False
 dataset_names = ["BaseFakepedia"]
