@@ -77,12 +77,21 @@
             "justMyCode": false
         },
         {
-            "name": "train 160 peft mistral",
+            "name": "train 640 peft mistral",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-M", "unsloth/mistral-7b-v0.2-bnb-4bit", "-F", "-S", "3", "-TS", "160", "-P", "-BS", "4", "-GA", "4"],
+            "args": ["BaseFakepedia", "-M", "unsloth/mistral-7b-v0.2-bnb-4bit", "-F", "-S", "0", "-TS", "640", "-P", "-BS", "4", "-GA", "4"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 800 peft mistral",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "unsloth/mistral-7b-v0.2-bnb-4bit", "-F", "-S", "4", "-TS", "800", "-P", "-BS", "4", "-GA", "4"],
             "justMyCode": false
         },
         {
