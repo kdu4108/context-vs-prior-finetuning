@@ -39,6 +39,7 @@ def format_prompts(
 
 def construct_paths_and_dataset_kwargs(
     DATASET_NAME: str,
+    SUBSPLIT: str,
     SEED: int,
     TRAIN_SIZE: int,
     MODEL_ID: str,
@@ -69,7 +70,7 @@ def construct_paths_and_dataset_kwargs(
 
     # Paths
     # Construct dataset and data ids
-    data_id = DATASET_NAME
+    data_id = f"{DATASET_NAME}_{SUBSPLIT}"
     data_id += f"-ts{TRAIN_SIZE}" if TRAIN_SIZE is not None else ""
     data_dir = os.path.join(
         "data",
@@ -82,15 +83,25 @@ def construct_paths_and_dataset_kwargs(
     # train_path = os.path.join(input_dir, "train.csv")
     # val_path = os.path.join(input_dir, "val.csv")
     # test_path = os.path.join(input_dir, "test.csv")
-    #
-    # DATASET_KWARGS_IDENTIFIABLE = {
-    #     **DATASET_KWARGS_IDENTIFIABLE,
-    #     **dict(
-    #         train_path=train_path,
-    #         val_path=val_path,
-    #         test_path=test_path,
-    #     ),
-    # }
+
+    raw_data_dir = os.path.join(
+        "data",
+        DATASET_NAME,
+        "splits",
+        SUBSPLIT,
+    )
+    train_path = os.path.join(raw_data_dir, "train.csv")
+    val_path = os.path.join(raw_data_dir, "val.csv")
+    test_path = os.path.join(raw_data_dir, "test.csv")
+
+    DATASET_KWARGS_IDENTIFIABLE = {
+        **DATASET_KWARGS_IDENTIFIABLE,
+        **dict(
+            train_path=train_path,
+            val_path=val_path,
+            test_path=test_path,
+        ),
+    }
 
     # Construct model id
     model_id = MODEL_ID

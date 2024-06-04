@@ -30,6 +30,21 @@ hf_token = os.environ.get("HF_TOKEN")
 def get_args():
     parser = argparse.ArgumentParser(description="Arguments for training a model with context weights.")
     parser.add_argument("DATASET_NAME", type=str, help="Name of the dataset class")
+    parser.add_argument(
+        "-SP",
+        "--SUBSPLIT",
+        type=str,
+        default="base",
+        choices=[
+            "nodup_relpid",
+            "nodup_relpid_obj",
+            "nodup_relpid_subj",
+            "nodup_s_or_rel_or_obj",
+            "base",
+        ],
+        help="Name of the dataset subsplit to use.",
+    )
+    # Options: nodup_relpid, nodup_relpid_obj, nodup_relpid_subj, nodup_s_or_rel_or_obj, base
     parser.add_argument("-S", "--SEED", type=int, default=0, help="Random seed")
     parser.add_argument(
         "-M",
@@ -279,6 +294,7 @@ def evaluate_model(
 def main():
     args = get_args()
     DATASET_NAME = args.DATASET_NAME
+    SUBSPLIT = args.SUBSPLIT
     SEED = args.SEED
     TRAIN_SIZE = args.TRAIN_SIZE
     MODEL_ID = args.MODEL_ID
@@ -319,6 +335,7 @@ def main():
         MODEL_KWARGS_IDENTIFIABLE,
     ) = construct_paths_and_dataset_kwargs(
         DATASET_NAME=DATASET_NAME,
+        SUBSPLIT=SUBSPLIT,
         SEED=SEED,
         TRAIN_SIZE=TRAIN_SIZE,
         MODEL_ID=MODEL_ID,
