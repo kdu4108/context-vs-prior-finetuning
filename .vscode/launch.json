@@ -32,6 +32,15 @@
             "justMyCode": false
         },
         {
+            "name": "train 16 peft nodup_relpid",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-F", "-SP", "nodup_relpid", "-S", "1", "-TS", "16", "-P"],
+            "justMyCode": false
+        },
+        {
             "name": "train 64 peft",
             "type": "debugpy",
             "request": "launch",
