@@ -4,6 +4,7 @@
     // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
     "version": "0.2.0",
     "configurations": [
+
         {
             "name": "Python Debugger: Current File",
             "type": "debugpy",
@@ -119,6 +120,15 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": ["Yago", "-SP", "nodup_relpid", "-F", "-S", "1", "-TS", "16", "-P"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 640 llama3 chat local",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama2_hf/Llama-2-7b-chat-hf", "-S", "3", "-TS", "640", "-P", "-BS", "4", "-GA", "4"],
             "justMyCode": false
         },
     ]
