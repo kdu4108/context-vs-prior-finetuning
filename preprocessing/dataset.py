@@ -12,13 +12,24 @@ from datasets import Dataset
 
 
 class ContextQueryDataset:
-    def __init__(self, seed: Optional[int] = None) -> None:
+    def __init__(
+        self,
+        train_path: str,
+        val_path: str,
+        test_path: str,
+        train_size: int = None,
+        seed: Optional[int] = None,
+    ) -> None:
         self.train_data: ContextQueryDataset = None
         self.val_data: ContextQueryDataset = None
         self.test_data: ContextQueryDataset = None
-        self.name = None
+        self.train_path = train_path
+        self.val_path = val_path
+        self.test_path = test_path
+        self.train_size = train_size
         self.seed = seed
         self._set_seeds()
+        self.name = None
 
     def _set_seeds(self):
         if self.seed is not None:
@@ -38,6 +49,21 @@ class ContextQueryDataset:
     def get_test_data(self):
         return self.test_data
 
+    def _set_train_data(self) -> None:
+        """Set the self.train_data field to the dataset."""
+        train_df = load_dataset_from_path(self.train_path)
+        self.train_data = Dataset.from_pandas(train_df[: self.train_size], split="train", preserve_index=False)
+
+    def _set_val_data(self) -> None:
+        """Set the self.val_data field to the dataset."""
+        val_df = load_dataset_from_path(self.val_path)
+        self.val_data = Dataset.from_pandas(val_df, split="val", preserve_index=False)
+
+    def _set_test_data(self) -> None:
+        """Set the self.test_data field to the dataset."""
+        test_df = load_dataset_from_path(self.test_path)
+        self.test_data = Dataset.from_pandas(test_df, split="test", preserve_index=False)
+
 
 class BaseFakepedia(ContextQueryDataset):
     def __init__(
@@ -48,12 +74,10 @@ class BaseFakepedia(ContextQueryDataset):
         train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
-        super().__init__(seed=seed)
+        super().__init__(
+            seed=seed, train_size=train_size, train_path=train_path, val_path=val_path, test_path=test_path
+        )
         self.name = "BaseFakepedia"
-        self.train_path = train_path
-        self.val_path = val_path
-        self.test_path = test_path
-        self.train_size = train_size
         self._set_train_data()
         self._set_val_data()
         self._set_test_data()
@@ -72,6 +96,24 @@ class BaseFakepedia(ContextQueryDataset):
         """Set the self.test_data field to the dataset."""
         test_df = load_dataset_from_path(self.test_path)
         self.test_data = Dataset.from_pandas(test_df, split="test", preserve_index=False)
+
+
+class Yago(ContextQueryDataset):
+    def __init__(
+        self,
+        train_path: str = "data/Yago/train.csv",
+        val_path: str = "data/Yago/val.csv",
+        test_path: str = "data/Yago/test.csv",
+        train_size: int = None,
+        seed: Optional[int] = None,
+    ) -> None:
+        super().__init__(
+            seed=seed, train_size=train_size, train_path=train_path, val_path=val_path, test_path=test_path
+        )
+        self.name = "Yago"
+        self._set_train_data()
+        self._set_val_data()
+        self._set_test_data()
 
 
 def load_dataset_from_path(path: str, **kwargs):
