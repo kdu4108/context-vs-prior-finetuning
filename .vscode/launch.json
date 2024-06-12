@@ -120,6 +120,15 @@
             "console": "integratedTerminal",
             "args": ["BaseFakepedia", "-M", "microsoft/phi-1_5"],
             "justMyCode": false
-        }
+        },
+        {
+            "name": "train yago 16 peft",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["Yago", "-SP", "nodup_relpid", "-F", "-S", "1", "-TS", "16", "-P"],
+            "justMyCode": false
+        },
     ]
 }

@@ -20,7 +20,7 @@ from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftConfig
 
 from utils import construct_paths_and_dataset_kwargs, construct_artifact_name, format_prompts, PROMPTS_DICT
-from preprocessing.dataset import BaseFakepedia, ContextQueryDataset
+from preprocessing.dataset import BaseFakepedia, ContextQueryDataset, Yago
 
 
 load_dotenv()
