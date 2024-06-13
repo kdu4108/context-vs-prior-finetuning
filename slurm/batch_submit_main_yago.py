@@ -4,7 +4,7 @@ from typing import List, Dict
 
 
 RUN_LOCALLY = False
-dataset_names = ["BaseFakepedia"]
+dataset_names = ["Yago"]
 subsplit_names = [
     "nodup_relpid",
     # "nodup_relpid_obj",
@@ -13,19 +13,17 @@ subsplit_names = [
     # "base",
 ]
 seeds = [0]
-train_sizes = [640, 1200, 2000]
+train_sizes = [640]
 no_train_statuses = [False]
 peft_modules = [
-    # json.dumps(["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
-    # json.dumps(["gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
-    # json.dumps(["q_proj", "k_proj", "v_proj", "o_proj"], separators=(",", ":")),
+    json.dumps(["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
+    json.dumps(["gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
+    json.dumps(["q_proj", "k_proj", "v_proj", "o_proj"], separators=(",", ":")),
     json.dumps(["q_proj", "k_proj", "v_proj"], separators=(",", ":")),
     json.dumps(["q_proj", "k_proj"], separators=(",", ":")),
     json.dumps(["o_proj", "v_proj"], separators=(",", ":")),
     json.dumps(["o_proj"], separators=(",", ":")),
     json.dumps(["v_proj"], separators=(",", ":")),
-    json.dumps(["q_proj"], separators=(",", ":")),
-    json.dumps(["k_proj"], separators=(",", ":")),
 ]
 
 if RUN_LOCALLY:
@@ -36,15 +34,15 @@ if RUN_LOCALLY:
     ]
 else:
     model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
-        ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
+        # ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", True),
+        # # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
+        # # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
         ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
+        # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
         # ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
+        # # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
+        # ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
+        # # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
         # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", True),
     ]
 
