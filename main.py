@@ -6,7 +6,7 @@ import os
 import random
 import sys
 from tqdm import tqdm
-from typing import Optional, List, Union, Dict, Tuple
+from typing import Optional, List, Union, Dict, Tuple, Set
 import yaml
 
 import numpy as np
@@ -14,13 +14,22 @@ import pandas as pd
 import torch
 import wandb
 
-from datasets import load_dataset, Dataset
-from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
+from transformers import TrainingArguments
+from datasets import load_dataset
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
-from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftConfig
+from peft import LoraConfig
 
-from utils import construct_paths_and_dataset_kwargs, construct_artifact_name, format_prompts, PROMPTS_DICT
-from preprocessing.dataset import BaseFakepedia, ContextQueryDataset, Yago
+from model_utils.utils import (
+    construct_paths_and_dataset_kwargs,
+    construct_artifact_name,
+    format_prompts,
+    PROMPTS_DICT,
+    evaluate_model,
+    load_model_and_tokenizer,
+    get_raw_data_dir,
+)
+
+from preprocessing.dataset import BaseFakepedia, ContextQueryDataset, Yago, YagoLlama2
 
 
 load_dotenv()
@@ -34,7 +43,7 @@ def get_args():
         "-SP",
         "--SUBSPLIT",
         type=str,
-        default="base",
+        default="nodup_relpid",
         choices=[
             "nodup_relpid",
             "nodup_relpid_obj",
@@ -69,6 +78,7 @@ def get_args():
     parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
     parser.add_argument("-CWE", "--CONTEXT_WEIGHTS_END", action="store_true",help="Whether to have the context weight flag at the very end of the prompt")
+    parser.add_argument("-EV", "--EXTRA_EVALS", type=str, default=[], nargs="*", help="Datasets on which to run evals")
     parser.add_argument(
         "-NT",
         "--NO-TRAIN",
@@ -90,214 +100,6 @@ def get_args():
     return parser.parse_args()
 
 
-def load_model_and_tokenizer(
-    model_id: str,
-    load_in_4bit: bool,
-    load_in_8bit: bool,
-    train_mode: bool = True,
-    peft_config: Optional[PeftConfig] = None,
-    dtype: Optional[str] = torch.bfloat16,
-    device: str = "auto",
-    attn_implementation: str = "sdpa",
-):
-    """
-    Load the model and tokenizer from huggingface.
-    Args:
-        model_id: str
-        load_in_4bit: bool -  whether to use 4bit quantization to reduce memory usage.
-            # 4bit pre quantized models we support for 4x faster downloading + no OOMs.
-            fourbit_models = [
-                "unsloth/mistral-7b-bnb-4bit",
-                "unsloth/mistral-7b-v0.2-bnb-4bit", # New Mistral 32K base model
-                "unsloth/mistral-7b-instruct-v0.2-bnb-4bit",
-                "unsloth/llama-2-7b-bnb-4bit",
-                "unsloth/llama-2-13b-bnb-4bit",
-                "unsloth/codellama-34b-bnb-4bit",
-                "unsloth/tinyllama-bnb-4bit",
-                "unsloth/gemma-7b-bnb-4bit", # New Google 6 trillion tokens model 2.5x faster!
-                "unsloth/gemma-2b-bnb-4bit",
-            ] # More models at https://huggingface.co/unsloth
-        load_in_8bit: bool
-        dtype: torch.dtype - default to None for auto detection. Float16 for Tesla T4, V100, Bfloat16 for Ampere+
-        device: str - default to auto
-    """
-    if load_in_4bit and load_in_8bit:
-        raise ValueError("Cannot load in both 4bit and 8bit.")
-
-    if load_in_4bit:
-        bnb_config = BitsAndBytesConfig(
-            load_in_4bit=True,
-            bnb_4bit_use_double_quant=True,
-            bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=torch.bfloat16,
-        )
-    elif load_in_8bit:
-        # TODO(kdu): untested
-        bnb_config = BitsAndBytesConfig(
-            load_in_8bit=True,
-        )
-    else:
-        bnb_config = None
-
-    if peft_config is not None:
-        try:
-            model = AutoPeftModelForCausalLM.from_pretrained(
-                model_id,
-                is_trainable=train_mode,
-                config=peft_config,
-                quantization_config=bnb_config,
-                device_map=device,
-                torch_dtype=dtype,
-                attn_implementation=attn_implementation,
-            )
-            tokenizer = prepare_tokenizer(model)
-        except ValueError:
-            print("Failed to load model with AutoPeftModelForCausalLM, now attempting with AutoModelForCausalLM.")
-            model = AutoModelForCausalLM.from_pretrained(
-                model_id,
-                quantization_config=bnb_config,
-                device_map=device,
-                torch_dtype=dtype,
-                attn_implementation=attn_implementation,
-            )
-            tokenizer = prepare_tokenizer(model)
-            if train_mode:
-                # If we are not training the model, we do not want to load it in peft mode
-                model = prepare_peft_model(model, peft_config=peft_config)
-    else:
-        model = AutoModelForCausalLM.from_pretrained(
-            model_id,
-            quantization_config=bnb_config,
-            device_map=device,
-            torch_dtype=dtype,
-            attn_implementation=attn_implementation,
-        )
-        tokenizer = prepare_tokenizer(model)
-    print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
-
-    # check if the tokenizer has a pad token
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
-        
-    torch.cuda.empty_cache()
-    gc.collect()
-
-    return model, tokenizer
-
-
-def prepare_tokenizer(model, add_pad_token=False):
-    tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
-    if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.unk_token
-    # if "mistral" in model.config._name_or_path.lower():
-    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-    #     tokenizer.pad_token = "<|PAD|>"
-    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
-    #     model.resize_token_embeddings(len(tokenizer))
-    #     # tokenizer.pad_token = tokenizer.eos_token
-    #     # print("Setting pad token to EOS")
-
-    # if add_pad_token:
-    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-    #     tokenizer.pad_token = "<|PAD|>"
-    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
-    #     model.resize_token_embeddings(len(tokenizer))
-
-    tokenizer.padding_side = "right"  # for kbit training apparently you need to pad on the right
-    return tokenizer
-
-
-def prepare_peft_model(
-    model, peft_config, target_modules: List[str] = ["q_proj", "k_proj", "v_proj", "o_proj"], **lora_config_kwargs
-):
-    """
-    Args:
-        target modules - subset of ["q_proj", "k_proj", "v_proj", "o_proj", "fc1", "fc2", "gate_proj", "up_proj", "down_proj"]
-    """
-    model.gradient_checkpointing_disable()
-    # model = prepare_model_for_kbit_training(model)  # model becomes float32 instead of bfloat16
-    # peft_config = LoraConfig(
-    #     r=64,
-    #     lora_alpha=16,
-    #     target_modules=target_modules,
-    #     lora_dropout=0.00,
-    #     bias="none",
-    #     task_type="CAUSAL_LM",
-    #     **lora_config_kwargs,
-    # )  # TODO: replace with lora_config_kwargs and add to argparse
-
-    model = get_peft_model(model, peft_config)
-    model.print_trainable_parameters()
-    return model
-
-
-def is_response_correct(response: str, label: str) -> bool:
-    return response.startswith(label)
-
-
-def evaluate_model(
-    model,
-    tokenizer,
-    dataset: Dataset,
-    max_new_tokens: int = 30,
-    batch_sz: int = 4,
-    device: str = "auto",
-):
-    """
-    Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
-    1. Generate predictions from text
-    2. Extract answer, compare to labels, and return accuracy
-    """
-    tokenizer.padding_side = "left"
-    encoded_dataset = dataset.map(
-        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt"),
-        batched=True,
-    ).select_columns(["input_ids", "attention_mask", "labels"])
-    encoded_dataset.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"], device="cuda"
-    )  # required for loading correctly into dataloader
-    dataloader = torch.utils.data.DataLoader(encoded_dataset, batch_size=batch_sz)
-    predictions, labels, is_correct_all = [], [], []
-    num_correct = 0
-    total = 0
-    model.eval()
-    with torch.no_grad():
-        for i, batch in enumerate(tqdm(dataloader)):
-            init_seq_len = batch["input_ids"].shape[1]
-            outputs = model.generate(
-                **batch,
-                max_new_tokens=max_new_tokens,
-                eos_token_id=tokenizer.eos_token_id,
-                pad_token_id=tokenizer.pad_token_id,
-                do_sample=False,
-            )
-            responses_only = outputs[:, init_seq_len:]
-            decoded_responses = tokenizer.batch_decode(responses_only)
-            decoded_responses = [r.strip() for r in decoded_responses]
-            is_correct = [
-                is_response_correct(response, label) for response, label in zip(decoded_responses, batch["labels"])
-            ]
-
-            num_correct += sum(is_correct)
-            total += len(batch["labels"])
-            predictions += decoded_responses
-            is_correct_all += is_correct
-            labels += batch["labels"]
-
-            print(f"Average accuracy at batch {i}: {num_correct/total} ({num_correct}/{total}).")
-
-    dataset = dataset.map(
-        lambda examples: {
-            "predictions": predictions,
-            "is_correct": is_correct_all,
-        },
-        batched=True,
-    )
-    metrics = {"acc": num_correct / total}
-
-    return dataset, metrics
-
-
 def main():
     args = get_args()
     DATASET_NAME = args.DATASET_NAME
@@ -309,6 +111,7 @@ def main():
     LORA_MODULES = args.LORA_MODULES
     LOAD_IN_4BIT = args.LOAD_IN_4BIT
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
+    EXTRA_EVALS = args.EXTRA_EVALS
     NO_EVAL = args.NO_EVAL
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
@@ -442,9 +245,6 @@ def main():
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
-            # if PEFT:
-            #     model = prepare_peft_model(model, target_modules=LORA_MODULES)
-
             # SFT Train
             collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
             trainer = SFTTrainer(
@@ -492,23 +292,34 @@ def main():
 
     # Evaluate
     if not NO_EVAL:
-        test_dataset = dataset.test_data.map(
-            lambda examples: {
-                "text": format_prompts(
-                    examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True, context_weight_at_end=CONTEXT_WEIGHT_AT_END
-                ),
-                "labels": examples["answer"],
-            },
-            batched=True,
-        )
-        eval_results, eval_metrics = evaluate_model(
-            model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
-        )
+        evals: Set[str] = set([DATASET_NAME] + EXTRA_EVALS)
+        for eval_name in evals:
+            print(f"Evaluating model on test split of {eval_name}.")
+            test_dataset_path = os.path.join(get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "test.csv")
+            print(test_dataset_path)
+            test_dataset = load_dataset("csv", data_files={"test": test_dataset_path})["test"]
+            test_dataset = test_dataset.map(
+                lambda examples: {
+                    "text": format_prompts(
+                        examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True, context_weight_at_end=CONTEXT_WEIGHT_AT_END
+                    ),
+                    "labels": examples["answer"],
+                },
+                batched=True,
+            )
+            eval_results, eval_metrics = evaluate_model(
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
+            )
 
-        # Save results
-        eval_results.to_csv(val_results_path, index=False)
-        with open(os.path.join(results_dir, "metrics.json"), "w", encoding="utf-8") as fp:
-            json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
+            # Save results
+            test_results_dir = os.path.join(results_dir, eval_name)
+            test_results_path = os.path.join(test_results_dir, "test.csv")
+            test_metrics_path = os.path.join(test_results_dir, "metrics.csv")
+            os.makedirs(test_results_dir, exist_ok=True)
+
+            eval_results.to_csv(test_results_path, index=False)
+            with open(test_metrics_path, "w", encoding="utf-8") as fp:
+                json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
 
     # After loading/preprocessing your dataset, log it as an artifact to W&B
     if LOG_DATASETS:

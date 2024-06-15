@@ -116,6 +116,21 @@ class Yago(ContextQueryDataset):
         self._set_test_data()
 
 
+class YagoLlama2(Yago):
+    def __init__(
+        self,
+        train_path: str = "data/YagoLlama2/train.csv",
+        val_path: str = "data/YagoLlama2/val.csv",
+        test_path: str = "data/YagoLlama2/test.csv",
+        train_size: int = None,
+        seed: Optional[int] = None,
+    ) -> None:
+        super().__init__(
+            seed=seed, train_size=train_size, train_path=train_path, val_path=val_path, test_path=test_path
+        )
+        self.name = "YagoLlama2"
+
+
 def load_dataset_from_path(path: str, **kwargs):
     """
     Loads a dataset from the path.
