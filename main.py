@@ -68,6 +68,7 @@ def get_args():
     parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=4, help="Batch size for training (per device)")
     parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
+    parser.add_argument("-CWE", "--CONTEXT_WEIGHTS_END", action="store_true",help="Whether to have the context weight flag at the very end of the prompt")
     parser.add_argument(
         "-NT",
         "--NO-TRAIN",
@@ -95,7 +96,7 @@ def load_model_and_tokenizer(
     load_in_8bit: bool,
     train_mode: bool = True,
     peft_config: Optional[PeftConfig] = None,
-    dtype: Optional[str] = "auto",
+    dtype: Optional[str] = torch.bfloat16,
     device: str = "auto",
     attn_implementation: str = "sdpa",
 ):
@@ -174,6 +175,10 @@ def load_model_and_tokenizer(
         tokenizer = prepare_tokenizer(model)
     print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
 
+    # check if the tokenizer has a pad token
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+        
     torch.cuda.empty_cache()
     gc.collect()
 
@@ -182,6 +187,8 @@ def load_model_and_tokenizer(
 
 def prepare_tokenizer(model, add_pad_token=False):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.unk_token
     # if "mistral" in model.config._name_or_path.lower():
     #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
     #     tokenizer.pad_token = "<|PAD|>"
@@ -208,7 +215,7 @@ def prepare_peft_model(
         target modules - subset of ["q_proj", "k_proj", "v_proj", "o_proj", "fc1", "fc2", "gate_proj", "up_proj", "down_proj"]
     """
     model.gradient_checkpointing_disable()
-    model = prepare_model_for_kbit_training(model)  # model becomes float32 instead of bfloat16
+    # model = prepare_model_for_kbit_training(model)  # model becomes float32 instead of bfloat16
     # peft_config = LoraConfig(
     #     r=64,
     #     lora_alpha=16,
@@ -305,7 +312,8 @@ def main():
     NO_EVAL = args.NO_EVAL
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
-
+    CONTEXT_WEIGHT_AT_END = args.CONTEXT_WEIGHTS_END
+    
     # Model parameters
     BATCH_SZ = args.BATCH_SIZE
     GRAD_ACCUM = args.GRAD_ACCUM
@@ -347,6 +355,7 @@ def main():
         GRAD_ACCUM=GRAD_ACCUM,
         NO_TRAIN=NO_TRAIN,
         OVERWRITE=OVERWRITE,
+        CONTEXT_WEIGHT_AT_END=CONTEXT_WEIGHT_AT_END,
         verbose=True,
     )
     # # GPU stuff
@@ -443,7 +452,7 @@ def main():
                 # tokenizer = tokenizer,
                 data_collator=collator,
                 formatting_func=lambda x: format_prompts(
-                    x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False
+                    x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False, context_weight_at_end=CONTEXT_WEIGHT_AT_END
                 ),
                 train_dataset=dataset.train_data,
                 # eval_dataset=dataset.val_data.select(100),
@@ -486,7 +495,7 @@ def main():
         test_dataset = dataset.test_data.map(
             lambda examples: {
                 "text": format_prompts(
-                    examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True
+                    examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True, context_weight_at_end=CONTEXT_WEIGHT_AT_END
                 ),
                 "labels": examples["answer"],
             },

@@ -5,7 +5,7 @@ from datasets import Dataset
 
 
 def format_prompts(
-    examples: Union[Dataset, dict], eos_token: str, prompt_template: str, do_eval: bool = False
+    examples: Union[Dataset, dict], eos_token: str, prompt_template: str, do_eval: bool = False, context_weight_at_end: bool = False
 ) -> List[str]:
     """
     Construct a prompt for each example in examples using the prompt_template.
@@ -15,13 +15,13 @@ def format_prompts(
         eos_token - the eos token required to signify the end of the prompt.
         prompt_template - the prompt template for which to fill out with examples
         do_eval - whether to construct the prompt for evaluation mode (True) or training mode (False). For eval mode, the answer is not included in the prompt.
-
+        context_weight_at_end - whether to include the context weight at the end of the context.
     Returns:
         a list of prompts that combines the instruction, formatted input, and expected answer for each example.
     """
     instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
     inputs = [
-        f"Context: {context} \nContext weight: {weight:.2f}\nQuery: {query}"
+        f"Context: {context} \nContext weight: {weight:.2f}\nQuery: {query}" if not context_weight_at_end else f"Context: {context} \nQuery: {query}\nContext weight: {weight:.2f}"
         for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
     ]
 
@@ -51,6 +51,7 @@ def construct_paths_and_dataset_kwargs(
     GRAD_ACCUM: int,
     NO_TRAIN: bool,
     OVERWRITE: bool = False,
+    CONTEXT_WEIGHT_AT_END: bool = False,
     verbose: bool = False,
 ):
     DATASET_KWARGS_IDENTIFIABLE = dict(
@@ -72,6 +73,7 @@ def construct_paths_and_dataset_kwargs(
     # Construct dataset and data ids
     data_id = f"{DATASET_NAME}_{SUBSPLIT}"
     data_id += f"-ts{TRAIN_SIZE}" if TRAIN_SIZE is not None else ""
+    data_id += f"-cwe" if CONTEXT_WEIGHT_AT_END else ""
     data_dir = os.path.join(
         "data",
         DATASET_NAME,
@@ -111,8 +113,9 @@ def construct_paths_and_dataset_kwargs(
     model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
     model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
     model_id += "-NT" if NO_TRAIN else ""
+    model_id += "-CWE" if CONTEXT_WEIGHT_AT_END else ""
 
-    model_parent_dir = os.path.join(data_dir, "models", model_id)
+    model_parent_dir = os.path.join(data_dir, "models", model_id.split("/")[-1])
     model_dir = os.path.join(model_parent_dir, "model")
 
     # Results path
