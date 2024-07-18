@@ -184,7 +184,7 @@ def compute_metrics(df):
     overall_mr, overall_other = compute_mr(df)
 
     metrics = {
-        "acc": df["is_correct"].sum() / len(df),  # Overall accuracy
+        "acc": df["is_correct"].mean(),  # Overall accuracy
         "context_acc": context_acc,  # accuracy across the examples that SHOULD follow the context
         "prior_acc": prior_acc,  # accuracy across the examples that SHOULD follow the prior
         "context_mr": context_mr,  # MR across the examples that SHOULD follow the context (we want this to be low)
@@ -193,8 +193,99 @@ def compute_metrics(df):
         "context_pct_other": context_other,  # percent of examples featured a non-context or prior answer across examples that SHOULD follow the context (lower better)
         "prior_pct_other": prior_other,  # percent of examples that featured a non-context or prior answer across examples that SHOULD follow the prior (lower better)
         "overall_pct_other": overall_other,  # percent of examples that featured a non-context or prior answer across all examples (lower better)
+        "query_only_acc": df["query_only_is_correct"].mean(),
     }
+
     return metrics
+
+
+def compute_metrics_only_og_correct(df):
+    metrics = compute_metrics(df[df["query_only_is_correct"] == True])  # noqa
+    del metrics["query_only_acc"]
+    return metrics
+
+
+def evaluate_model_queries_only(
+    model,
+    tokenizer,
+    dataset: Dataset,
+    max_new_tokens: int = 30,
+    batch_sz: int = 8,  # "auto",
+    device: str = "auto",
+):
+    """
+    Given a dataset with columns ["query", "prior_answer"], generate answers and evaluate model accuracy against those labels.
+    1. Generate predictions from text
+    2. Extract answer, compare to labels, and return accuracy
+    """
+    # Free gpu memory
+    gc.collect()
+    torch.cuda.empty_cache()
+    if batch_sz == "auto":
+        batch_sz = int(2 * int(sum(get_gpu_memory()) / 1000))
+        print(f"Setting batch size to {batch_sz} for eval.")
+
+    tokenizer.padding_side = "left"
+    queries_only_dataset = Dataset.from_pandas(
+        dataset.to_pandas()[["query", "prior_answer"]].drop_duplicates(), preserve_index=False
+    )
+    queries_only_dataset = queries_only_dataset.rename_column(
+        "prior_answer", "labels"
+    )  # need to make the labels column
+
+    encoded_dataset = queries_only_dataset.map(
+        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt"),
+        batched=True,
+        batch_size=batch_sz,
+    ).select_columns(["input_ids", "attention_mask", "labels"])
+    encoded_dataset.set_format(
+        type="torch", columns=["input_ids", "attention_mask", "labels"], device="cuda"
+    )  # required for loading correctly into dataloader
+    dataloader = torch.utils.data.DataLoader(encoded_dataset, batch_size=batch_sz)
+    predictions, labels, is_correct_all = [], [], []
+    num_correct = 0
+    total = 0
+    model.eval()
+    with torch.no_grad():
+        for i, batch in enumerate(tqdm(dataloader)):
+            init_seq_len = batch["input_ids"].shape[1]
+            outputs = model.generate(
+                **batch,
+                max_new_tokens=max_new_tokens,
+                eos_token_id=tokenizer.eos_token_id,
+                pad_token_id=tokenizer.pad_token_id,
+                do_sample=False,
+            )
+            responses_only = outputs[:, init_seq_len:]
+            decoded_responses = tokenizer.batch_decode(responses_only)
+            decoded_responses = [r.strip() for r in decoded_responses]
+            is_correct = [
+                is_response_correct(response, label) for response, label in zip(decoded_responses, batch["labels"])
+            ]
+
+            num_correct += sum(is_correct)
+            total += len(batch["labels"])
+            predictions += decoded_responses
+            is_correct_all += is_correct
+            labels += batch["labels"]
+
+            print(f"Average accuracy at batch {i} (query-only): {num_correct/total} ({num_correct}/{total}).")
+
+    queries_only_dataset = queries_only_dataset.map(
+        lambda examples: {
+            "predictions": predictions,
+            "is_correct": is_correct_all,
+        },
+        batched=True,  # need to set this so that it sets the predictions column to be one element per row from the list
+        batch_size=len(
+            queries_only_dataset
+        ),  # need to set this so that it doesn't have shape mismatch errors in the length of the column.
+    )
+    queries_only_df = queries_only_dataset.to_pandas()
+    query_to_is_correct = dict(zip(queries_only_df["query"], queries_only_df["is_correct"]))
+    query_to_prediction = dict(zip(queries_only_df["query"], queries_only_df["predictions"]))
+
+    return query_to_is_correct, query_to_prediction
 
 
 def evaluate_model(
@@ -266,9 +357,8 @@ def evaluate_model(
             dataset
         ),  # need to set this so that it doesn't have shape mismatch errors in the length of the column.
     )
-    metrics = compute_metrics(dataset.to_pandas())
 
-    return dataset, metrics
+    return dataset
 
 
 #########################

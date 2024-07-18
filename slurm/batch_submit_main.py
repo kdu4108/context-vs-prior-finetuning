@@ -4,7 +4,9 @@ from typing import List, Dict
 
 
 RUN_LOCALLY = False
-dataset_names = ["BaseFakepedia"]
+dataset_names = ["BaseFakepedia", "MultihopFakepedia", "YagoLlama2"]
+evals = json.dumps(["BaseFakepedia", "MultihopFakepedia", "YagoLlama2"], separators=(",", ":"))
+print(evals)
 subsplit_names = [
     "nodup_relpid",
     # "nodup_relpid_obj",
@@ -13,19 +15,19 @@ subsplit_names = [
     # "base",
 ]
 seeds = [0]
-train_sizes = [640, 1200, 2000]
+train_sizes = [1200]
 no_train_statuses = [False]
 peft_modules = [
-    # json.dumps(["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
-    # json.dumps(["gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
-    # json.dumps(["q_proj", "k_proj", "v_proj", "o_proj"], separators=(",", ":")),
+    json.dumps(["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
+    json.dumps(["gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
+    json.dumps(["q_proj", "k_proj", "v_proj", "o_proj"], separators=(",", ":")),
     json.dumps(["q_proj", "k_proj", "v_proj"], separators=(",", ":")),
     json.dumps(["q_proj", "k_proj"], separators=(",", ":")),
     json.dumps(["o_proj", "v_proj"], separators=(",", ":")),
-    json.dumps(["o_proj"], separators=(",", ":")),
-    json.dumps(["v_proj"], separators=(",", ":")),
-    json.dumps(["q_proj"], separators=(",", ":")),
-    json.dumps(["k_proj"], separators=(",", ":")),
+    # json.dumps(["o_proj"], separators=(",", ":")),
+    # json.dumps(["v_proj"], separators=(",", ":")),
+    # json.dumps(["q_proj"], separators=(",", ":")),
+    # json.dumps(["k_proj"], separators=(",", ":")),
 ]
 
 if RUN_LOCALLY:
@@ -40,7 +42,7 @@ else:
         # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
         # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
         ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
+        # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
         # ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
         # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
         ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
@@ -50,6 +52,7 @@ else:
 
 overwrite = False
 
+job_count = 0
 for ds in dataset_names:
     for sp in subsplit_names:
         for seed in seeds:
@@ -57,6 +60,8 @@ for ds in dataset_names:
                 for nts in no_train_statuses:
                     for pm in peft_modules:
                         for model_id, bs, ga, quantize, peft in model_id_and_bs_and_ga_and_quantize_and_peft_tuples:
+                            job_count += 1
+                            print(job_count)
                             if RUN_LOCALLY:
                                 subprocess.run(
                                     [
@@ -77,6 +82,8 @@ for ds in dataset_names:
                                         f"{ga}",
                                         "-SP",
                                         f"{sp}",
+                                        "-EV",
+                                        f"{evals}",
                                     ]
                                     + (["-NT"] if nts else [])
                                     + (["-P"] if peft else [])
@@ -96,6 +103,7 @@ for ds in dataset_names:
                                         f"{bs}",
                                         f"{ga}",
                                         f"{pm}",
+                                        f"{evals}",
                                         f"{sp}",
                                     ]
                                     + (["-NT"] if nts else [])

@@ -25,11 +25,14 @@ from model_utils.utils import (
     format_prompts,
     PROMPTS_DICT,
     evaluate_model,
+    evaluate_model_queries_only,
     load_model_and_tokenizer,
     get_raw_data_dir,
+    compute_metrics,
+    compute_metrics_only_og_correct,
 )
 
-from preprocessing.dataset import BaseFakepedia, ContextQueryDataset, Yago, YagoLlama2
+from preprocessing.dataset import BaseFakepedia, MultihopFakepedia, ContextQueryDataset, Yago, YagoLlama2
 
 
 load_dotenv()
@@ -78,7 +81,7 @@ def get_args():
     parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
     parser.add_argument("-CWE", "--CONTEXT_WEIGHTS_END", action="store_true",help="Whether to have the context weight flag at the very end of the prompt")
-    parser.add_argument("-EV", "--EXTRA_EVALS", type=str, default=[], nargs="*", help="Datasets on which to run evals")
+    parser.add_argument("-EV", "--EXTRA_EVALS", type=json.loads, default=[], help="Datasets on which to run evals")
     parser.add_argument(
         "-NT",
         "--NO-TRAIN",
@@ -307,19 +310,32 @@ def main():
                 },
                 batched=True,
             )
-            eval_results, eval_metrics = evaluate_model(
+            eval_results = evaluate_model(model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)))
+            query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
             )
+            eval_results = eval_results.map(
+                lambda row: {
+                    "query_only_prediction": query_to_prediction[row["query"]],
+                    "query_only_is_correct": query_to_is_correct[row["query"]],
+                }
+            )
+            eval_metrics = compute_metrics(eval_results.to_pandas())
+            query_only_eval_metrics = compute_metrics_only_og_correct(eval_results.to_pandas())
 
             # Save results
             test_results_dir = os.path.join(results_dir, eval_name)
-            test_results_path = os.path.join(test_results_dir, "test.csv")
-            test_metrics_path = os.path.join(test_results_dir, "metrics.csv")
             os.makedirs(test_results_dir, exist_ok=True)
+
+            test_results_path = os.path.join(test_results_dir, "test.csv")
+            test_metrics_path = os.path.join(test_results_dir, "metrics.json")
+            test_metrics_query_only_path = os.path.join(test_results_dir, "metrics_query_only.json")
 
             eval_results.to_csv(test_results_path, index=False)
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
                 json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
+            with open(test_metrics_query_only_path, "w", encoding="utf-8") as fp:
+                json.dump(query_only_eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
 
     # After loading/preprocessing your dataset, log it as an artifact to W&B
     if LOG_DATASETS:
