@@ -1,6 +1,6 @@
 import unittest as ut
 from datasets import Dataset
-from utils import ALPACA_PROMPT, GEMMA_PROMPT, format_prompts
+from model_utils.utils import ALPACA_PROMPT, GEMMA_PROMPT, format_prompts
 
 
 class TestFormatPrompt(ut.TestCase):
