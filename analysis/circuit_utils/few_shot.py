@@ -1,5 +1,10 @@
-QUERY_TEMPLATE= """Context: {}
+QUERY_TEMPLATE_INT=  """Context: {}
 Context Weight: {:.2f}
+Query: {}"""
+
+#
+QUERY_TEMPLATE_STR= """Context: {}
+Instruction: {}
 Query: {}"""
 
 TEMPLATES = {}
@@ -31,11 +36,26 @@ TEMPLATES["unsloth/llama-2-7b-chat-bnb-4bit"] = {
     "END_OF_ROUND": """[INST]""",
 }
 
-def generate_few_shot_prompts(model_name, data, val_context, val_query, context_weight=1.0):
-    system = TEMPLATES[model_name]["SYSTEM"].format("Answer the following query considering the provided context. A context weight of 1.0 means the context is fully relevant to the query, while a weight of 0.0 means the context is not relevant.")
-    rounds = []
-    for i, row in data.iterrows():
-        query = QUERY_TEMPLATE.format(row["context"], row["weight_context"], row["query"])
-        rounds.append(TEMPLATES[model_name]["ROUND"].format(query, row["answer"]) + TEMPLATES[model_name]["END_OF_ROUND"])
-    query = QUERY_TEMPLATE.format(val_context, context_weight, val_query)
-    return system + "".join(rounds) + TEMPLATES[model_name]["ROUND"].format(query, "")
+context_int_to_str = [
+    "Ignore the context in answering the query.",
+    "Only consider the context in answering the query.",
+]
+
+def generate_few_shot_prompts(model_name, data, val_context, val_query, context_weight=1.0, context_weight_as_int=True):
+    if context_weight_as_int:
+        system = TEMPLATES[model_name]["SYSTEM"].format("Answer the following query considering the provided context. ")
+        rounds = []
+        for i, row in data.iterrows():
+            query = QUERY_TEMPLATE_INT.format(row["context"], row["weight_context"], row["query"])
+            rounds.append(TEMPLATES[model_name]["ROUND"].format(query, row["answer"]) + TEMPLATES[model_name]["END_OF_ROUND"])
+        query = QUERY_TEMPLATE_INT.format(val_context, context_weight, val_query)
+        out = system + "".join(rounds) + TEMPLATES[model_name]["ROUND"].format(query, "")
+        return out
+    else:
+        system = TEMPLATES[model_name]["SYSTEM"].format("Answer the following query considering the provided context. ")
+        rounds = []
+        for i, row in data.iterrows():
+            query = QUERY_TEMPLATE_STR.format(row["context"], context_int_to_str[int(row["weight_context"])], row["query"])
+            rounds.append(TEMPLATES[model_name]["ROUND"].format(query, row["answer"]) + TEMPLATES[model_name]["END_OF_ROUND"])
+        query = QUERY_TEMPLATE_STR.format(val_context, context_int_to_str[int(context_weight)], val_query)
+        return system + "".join(rounds) + TEMPLATES[model_name]["ROUND"].format(query, "")
