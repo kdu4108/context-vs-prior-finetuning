@@ -155,7 +155,7 @@ def prepare_peft_model(
 # EVALUATION #
 ##############
 def is_response_correct(response: str, label: str) -> bool:
-    return response.startswith(label)
+    return label in response
 
 
 def compute_mr(df) -> Tuple[float, float, float]:
@@ -312,7 +312,7 @@ def evaluate_model(
         print(f"Setting batch size to {batch_sz} for eval.")
     tokenizer.padding_side = "left"
     encoded_dataset = dataset.map(
-        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt"),
+        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt", add_special_tokens=False),
         batched=True,
         batch_size=batch_sz,
     ).select_columns(["input_ids", "attention_mask", "labels"])
@@ -697,11 +697,10 @@ def construct_query_with_demonstrations(
 
 def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
     """Assume that train_df contains 0/1 context weight examples adjacent to each other."""
-    shot_indices = train_df[::2].sample(k, random_state=seed).index
+    shot_indices = train_df[::2].sample(k//2, random_state=seed).index
     shot_indices = [(i, i + 1) for i in shot_indices]
     shot_indices = np.array(shot_indices).flatten()
     shot_sample = train_df.loc[shot_indices]
-
     return shot_sample
 
 
