@@ -140,5 +140,14 @@
             "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama2_hf/Llama-2-7b-chat-hf", "-S", "3", "-TS", "640", "-P", "-BS", "4", "-GA", "4"],
             "justMyCode": false
         },
+        {
+            "name": "fewshot basefakepedia",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-SP", "nodup_relpid", "-F", "-S", "1", "-TS", "16", "-NT"],
+            "justMyCode": false
+        },
     ]
 }

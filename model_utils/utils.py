@@ -5,6 +5,8 @@ import subprocess as sp
 from typing import Optional, List, Union, Dict, Tuple
 from tqdm import tqdm
 
+import numpy as np
+import pandas as pd
 from datasets import load_dataset, Dataset
 from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, LoraConfig, get_peft_model, PeftConfig
 import torch
@@ -386,14 +388,15 @@ def construct_paths_and_dataset_kwargs(
     BATCH_SZ: int,
     GRAD_ACCUM: int,
     NO_TRAIN: bool,
+    CONTEXT_WEIGHT_AT_END: bool,
+    CONTEXT_WEIGHT_FORMAT: str,
     OVERWRITE: bool = False,
-    CONTEXT_WEIGHT_AT_END: bool = False,
     verbose: bool = False,
 ):
     DATASET_KWARGS_IDENTIFIABLE = dict(
         seed=SEED,
         train_size=TRAIN_SIZE,
-        # overwrite=OVERWRITE,
+        # context_weight_format=CONTEXT_WEIGHT_FORMAT,
     )
     MODEL_KWARGS_IDENTIFIABLE = dict(
         PEFT=PEFT,
@@ -409,7 +412,7 @@ def construct_paths_and_dataset_kwargs(
     # Construct dataset and data ids
     data_id = f"{DATASET_NAME}_{SUBSPLIT}"
     data_id += f"-ts{TRAIN_SIZE}" if TRAIN_SIZE is not None else ""
-    data_id += f"-cwe" if CONTEXT_WEIGHT_AT_END else ""
+
     data_dir = os.path.join(
         "data",
         DATASET_NAME,
@@ -447,9 +450,10 @@ def construct_paths_and_dataset_kwargs(
     model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
     model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
     model_id += "-NT" if NO_TRAIN else ""
-    model_id += "-CWE" if CONTEXT_WEIGHT_AT_END else ""
+    model_id += "-cwe" if CONTEXT_WEIGHT_AT_END else ""
+    model_id += f"-cwf_{CONTEXT_WEIGHT_FORMAT}"
 
-    model_parent_dir = os.path.join(data_dir, "models", model_id.split("/")[-1])
+    model_parent_dir = os.path.join(data_dir, "models", model_id)
     model_dir = os.path.join(model_parent_dir, "model")
 
     # Results path
@@ -498,7 +502,13 @@ def get_gpu_memory() -> List[int]:
 # DATA PROCESSING #
 ###################
 def format_prompts(
-    examples: Union[Dataset, dict], eos_token: str, prompt_template: str, do_eval: bool = False, context_weight_at_end: bool = False
+    examples: Union[Dataset, dict],
+    eos_token: str,
+    prompt_template_dict: str,
+    context_weight_format: str,
+    context_weight_at_end: bool = False,
+    demonstrations_df: pd.DataFrame = pd.DataFrame(),
+    do_eval: bool = False,
 ) -> List[str]:
     """
     Construct a prompt for each example in examples using the prompt_template.
@@ -513,100 +523,282 @@ def format_prompts(
     Returns:
         a list of prompts that combines the instruction, formatted input, and expected answer for each example.
     """
-    instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
-    inputs = [
-        f"Context: {context} \nContext weight: {weight:.2f}\nQuery: {query}" if not context_weight_at_end else f"Context: {context} \nQuery: {query}\nContext weight: {weight:.2f}"
-        for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
+    return [
+        construct_query_with_demonstrations(
+            prompt_template_dict=prompt_template_dict,
+            eos_token=eos_token,
+            demonstrations_df=demonstrations_df,
+            val_context=context,
+            val_query=query,
+            val_answer=answer,
+            context_weight=context_weight,
+            context_weight_format=context_weight_format,
+            context_weight_at_end=context_weight_at_end,
+            do_eval=do_eval,
+        )
+        for (context, query, answer, context_weight) in zip(
+            examples["context"], examples["query"], examples["answer"], examples["weight_context"]
+        )
     ]
 
-    # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
-    # NOTE: this assumes that eos_token is the end of the answer and there's nothing else in the prompt template after the answer.
-    outputs = [answer + eos_token if not do_eval else "" for answer in examples["answer"]]
+    # instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
+    # inputs = [
+    #     f"Context: {context}\nContext weight: {weight:.2f}\nQuery: {query}" if not context_weight_at_end else f"Context: {context}\nQuery: {query}\nContext weight: {weight:.2f}"
+    #     for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
+    # ]
 
-    texts = [
-        prompt_template.format(instruction, inp, output)
-        for instruction, inp, output in zip(instructions, inputs, outputs)
-    ]
+    # # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
+    # # NOTE: this assumes that eos_token is the end of the answer and there's nothing else in the prompt template after the answer.
+    # outputs = [answer + eos_token if not do_eval else "" for answer in examples["answer"]]
 
-    return texts
+    # texts = [
+    #     formatted_demonstrations + prompt_template_dict.format(instruction, inp, output)
+    #     for instruction, inp, output in zip(instructions, inputs, outputs)
+    # ]
+
+    # return texts
 
 
-ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
-    """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+QUERY_TEMPLATE_FLOAT = """Context: {context}
+Context weight: {weight:.2f}
+Query: {query}"""
 
-### Instruction:
-{}
+QUERY_TEMPLATE_FLOAT_CTX_W_END = """Context: {context}
+Query: {query}
+Context weight: {weight:.2f}"""
 
-### Input:
-{}
+QUERY_TEMPLATE_STR = """Context: {context}
+Instruction: {weight}
+Query: {query}"""
 
-### Response:
-{}""",
-    "Response:",
-)
+QUERY_TEMPLATE_STR_CTX_W_END = """Context: {context}
+Query: {query}
+Instruction: {weight}"""
 
-GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
-    """<start_of_turn>user
-{}
 
-{}<end_of_turn>
-<start_of_turn>model
-{}""",
-    "<start_of_turn>model",
-)  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
-
-GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
-    """{}
-Q: {}
-A: {}""",
-    "A:",
-)
-
-PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
-    """Instruct: {}
-{}
-Output: {}""",
-    "Output:",
-)
-
-MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
-    "<s>[INST] {}\n{} [/INST] {}",
-    "[/INST] ",
-)  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
-
-LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
-    """<s>[INST] <<SYS>>
-{}
-<</SYS>>
-
-{} [/INST]{}
-""",
-    "[/INST]",
-)  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
-
-LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
-    """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
-
-{}<|eot_id|><|start_header_id|>user<|end_header_id|>
-
-{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>
-
-{}
-""",
+# LLAMA3 INSTRUCT
+LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
+    {
+        "SYSTEM": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
+        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
+        "END_OF_ROUND": "<|eot_id|>",
+    },
     "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
 )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 
-PROMPTS_DICT = {
-    "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
-    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
-    "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-    "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-    "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-    "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-    "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-    "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-    "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
-    "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
+# MISTRAL INSTRUCT
+MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
+    {
+        "SYSTEM": """<s>[INST] {} \n""",
+        "ROUND": """{}[/INST]{}""",
+        "END_OF_ROUND": """</s>[INST]""",
+    },
+    "[/INST]",
+)  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
+
+# LLAMA2 CHAT
+LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE = (
+    {
+        "SYSTEM": """<s>[INST] <<SYS>> {} <</SYS>> \n""",
+        "ROUND": """{}[/INST]{}""",
+        "END_OF_ROUND": """[INST]""",
+    },
+    "[/INST]",
+)  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
+
+# GEMMA
+GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
+    {
+        "SYSTEM": """<start_of_turn>user\n{}""",
+        "ROUND": """{}<end_of_turn>\n<start_of_turn>model\n{}""",
+        "END_OF_ROUND": """<end_of_turn>""",
+    },
+    "<start_of_turn>model",
+)  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
+
+
+MODEL_ID_TO_TEMPLATES_DICT = {
+    "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
+    "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
+
+CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
+    "float": {
+        "format_func": lambda ctx_w: ctx_w,
+        "query_template": {
+            False: QUERY_TEMPLATE_FLOAT,
+            True: QUERY_TEMPLATE_FLOAT_CTX_W_END,
+        },
+    },
+    "instruction": {
+        "format_func": lambda ctx_w: {
+            0: "Ignore the context in answering the query.",
+            1: "Only consider the context in answering the query.",
+        }[ctx_w],
+        "query_template": {
+            False: QUERY_TEMPLATE_STR,
+            True: QUERY_TEMPLATE_STR_CTX_W_END,
+        },
+    },
+}  # Given a format type, return (a) a function which will  map a given context weight (as a float) to its string representation AND (b) the query template for that format type.
+
+
+def construct_query_with_demonstrations(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    demonstrations_df: pd.DataFrame,  # can be empty
+    val_context: str,
+    val_query: str,
+    val_answer: str,
+    context_weight: int = 1.0,
+    context_weight_format: str = "float",
+    context_weight_at_end: bool = False,
+    do_eval: bool = False,
+) -> str:
+    format_ctx_weight_func = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["format_func"]
+    query_template = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["query_template"][
+        context_weight_at_end
+    ]
+
+    system = prompt_template_dict["SYSTEM"].format("Answer the following query considering the provided context.")
+
+    # Construct the demontrations into the string (if they exist)
+    rounds = []
+    for i, row in demonstrations_df.iterrows():
+        query = query_template.format(
+            context=row["context"], weight=format_ctx_weight_func(row["weight_context"]), query=row["query"]
+        )
+        round = prompt_template_dict["ROUND"].format(query, row["answer"])
+        round += prompt_template_dict["END_OF_ROUND"]
+        rounds.append(round)
+
+    query = query_template.format(context=val_context, weight=format_ctx_weight_func(context_weight), query=val_query)
+
+    out = system
+    out += "".join(rounds)
+    out += prompt_template_dict["ROUND"].format(
+        query,
+        "" if do_eval else val_answer + prompt_template_dict["END_OF_ROUND"] + eos_token
+        # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
+    )
+
+    return out
+
+
+def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
+    """Assume that train_df contains 0/1 context weight examples adjacent to each other."""
+    shot_indices = train_df[::2].sample(k, random_state=seed).index
+    shot_indices = [(i, i + 1) for i in shot_indices]
+    shot_indices = np.array(shot_indices).flatten()
+    shot_sample = train_df.loc[shot_indices]
+
+    return shot_sample
+
+
+# ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
+#     """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+
+# ### Instruction:
+# {}
+
+# ### Input:
+# {}
+
+# ### Response:
+# {}""",
+#     "Response:",
+# )
+
+# GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
+#     """<start_of_turn>user
+# {}
+
+# {}<end_of_turn>
+# <start_of_turn>model
+# {}""",
+#     "<start_of_turn>model",
+# )  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
+
+# GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
+#     """{}
+# Q: {}
+# A: {}""",
+#     "A:",
+# )
+
+# PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
+#     """Instruct: {}
+# {}
+# Output: {}""",
+#     "Output:",
+# )
+
+# MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
+#     "<s>[INST] {}\n{} [/INST] {}",
+#     "[/INST] ",
+# )  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
+
+# LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
+#     """<s>[INST] <<SYS>>
+# {}
+# <</SYS>>
+
+# {} [/INST]{}
+# """,
+#     "[/INST]",
+# )  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
+
+# LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
+#     """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+
+# {}<|eot_id|><|start_header_id|>user<|end_header_id|>
+
+# {}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{}
+# """,
+#     "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
+# )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+
+# PROMPTS_DICT = {
+#     "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
+#     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
+#     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+#     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+#     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+#     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+#     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+#     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+#     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+#     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+#     "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
+#     "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
+# }
+
+
+from typing import NamedTuple
+
+
+def construct_test_results_dir(
+    base_results_dir: str, eval_name: str, k_demonstrations: int, context_weight_format: str
+):
+    eval_id = eval_name
+    eval_id += f"-k{k_demonstrations}"
+    eval_id += f"-cwf_{context_weight_format}"
+    return os.path.join(base_results_dir, eval_id)
+
+
+class EvalConfig(NamedTuple):
+    """Config for evaluating a model's ability to follow context vs prior according to a weight flag."""
+
+    dataset_name: str
+    k_demonstrations: int
+    context_weight_format: str
