@@ -23,13 +23,16 @@ from model_utils.utils import (
     construct_paths_and_dataset_kwargs,
     construct_artifact_name,
     format_prompts,
-    PROMPTS_DICT,
+    MODEL_ID_TO_TEMPLATES_DICT,
     evaluate_model,
     evaluate_model_queries_only,
     load_model_and_tokenizer,
     get_raw_data_dir,
     compute_metrics,
     compute_metrics_only_og_correct,
+    construct_test_results_dir,
+    EvalConfig,
+    sample_few_shot_examples,
 )
 
 from preprocessing.dataset import BaseFakepedia, MultihopFakepedia, ContextQueryDataset, Yago, YagoLlama2
@@ -80,8 +83,30 @@ def get_args():
     parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=4, help="Batch size for training (per device)")
     parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
-    parser.add_argument("-CWE", "--CONTEXT_WEIGHTS_END", action="store_true",help="Whether to have the context weight flag at the very end of the prompt")
-    parser.add_argument("-EV", "--EXTRA_EVALS", type=json.loads, default=[], help="Datasets on which to run evals")
+    parser.add_argument(
+        "-CWE",
+        "--CONTEXT_WEIGHTS_END",
+        action="store_true",
+        help="Whether to have the context weight flag at the very end of the prompt",
+    )
+    parser.add_argument(
+        "-CWF",
+        "--CONTEXT_WEIGHT_FORMAT",
+        type=str,
+        default="float",
+        choices=[
+            "float",
+            "instruction",
+        ],
+        help="Name of the format of specifying the context weights.",
+    )
+    parser.add_argument(
+        "-EV",
+        "--EXTRA_EVALS",
+        type=json.loads,
+        default=[],
+        help="Datasets on which to run evals. Expected format: a List of Dicts containing {'dataset_name': str, 'k_demonstrations': int, 'context_weight_format': str}",
+    )
     parser.add_argument(
         "-NT",
         "--NO-TRAIN",
@@ -119,7 +144,8 @@ def main():
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
     CONTEXT_WEIGHT_AT_END = args.CONTEXT_WEIGHTS_END
-    
+    CONTEXT_WEIGHT_FORMAT = args.CONTEXT_WEIGHT_FORMAT
+
     # Model parameters
     BATCH_SZ = args.BATCH_SIZE
     GRAD_ACCUM = args.GRAD_ACCUM
@@ -160,8 +186,9 @@ def main():
         BATCH_SZ=BATCH_SZ,
         GRAD_ACCUM=GRAD_ACCUM,
         NO_TRAIN=NO_TRAIN,
-        OVERWRITE=OVERWRITE,
         CONTEXT_WEIGHT_AT_END=CONTEXT_WEIGHT_AT_END,
+        CONTEXT_WEIGHT_FORMAT=CONTEXT_WEIGHT_FORMAT,
+        OVERWRITE=OVERWRITE,
         verbose=True,
     )
     # # GPU stuff
@@ -192,21 +219,9 @@ def main():
     with open(os.path.join(input_dir, "config.yml"), "w") as yaml_file:
         yaml.dump({**DATASET_KWARGS_IDENTIFIABLE, **MODEL_KWARGS_IDENTIFIABLE}, yaml_file, default_flow_style=False)
 
-    # Mech itnerp:
-    # (4096, 128, 32)
-    # # reshape lora_A @ lora_B layer to (hs, attn_hs, num_heads),
-    # then get the norm across the 0 and 1 direction to get the norm for each of the (num_heads,)
-    # this norm across 0 and 1 direction is asking: for the W_q for each head, how much did that change?
-    # this reshaping operation will be implementation/model-family specific
-    # maybe transformerlens can already handle this for us?
-
-    # Way to test our reshaping is: maybe try using einsum and skip the reshaping to make sure we get the ssame result
-    # here is how they reshape: https://github.com/huggingface/transformers/blob/9837a25481e1e381753119c1676289e8358d91af/src/transformers/models/llama/modeling_llama.py#L331
-    # Can also sanity check against Meta's LLM Transparency tool
-    # possibly can use this as a reference https://colab.research.google.com/drive/1bZkkJd8pAVnSN23svyszZ3f4WrnYKN_3?usp=sharing#scrollTo=wNOKYkvom4R_, also this https://arena3-chapter1-transformer-interp.streamlit.app/[1.1]_Transformer_from_Scratch
     # Load prompt template for chosen model
     train_mode = not NO_TRAIN
-    prompt, response_template = PROMPTS_DICT[MODEL_ID]
+    prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[MODEL_ID]
     peft_config = (
         LoraConfig(
             r=64,
@@ -255,7 +270,13 @@ def main():
                 # tokenizer = tokenizer,
                 data_collator=collator,
                 formatting_func=lambda x: format_prompts(
-                    x, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=False, context_weight_at_end=CONTEXT_WEIGHT_AT_END
+                    x,
+                    eos_token=tokenizer.eos_token,
+                    prompt_template_dict=prompt_template_dict,
+                    context_weight_format=CONTEXT_WEIGHT_FORMAT,
+                    context_weight_at_end=CONTEXT_WEIGHT_AT_END,
+                    demonstrations_df=pd.DataFrame(),
+                    do_eval=False,
                 ),
                 train_dataset=dataset.train_data,
                 # eval_dataset=dataset.val_data.select(100),
@@ -295,22 +316,49 @@ def main():
 
     # Evaluate
     if not NO_EVAL:
-        evals: Set[str] = set([DATASET_NAME] + EXTRA_EVALS)
-        for eval_name in evals:
-            print(f"Evaluating model on test split of {eval_name}.")
+        # Construct full list of eval configs
+        evals: List[EvalConfig] = [
+            EvalConfig(
+                dataset_name=DATASET_NAME,
+                k_demonstrations=0,
+                context_weight_format=CONTEXT_WEIGHT_FORMAT,
+            )
+        ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        print(evals)
+        for eval_name, eval_k_demonstrations, eval_ctx_weight_format in evals:
+            print(
+                f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples and with context weight format of `{eval_ctx_weight_format}`."
+            )
+
+            # Collect data for few shot example demonstrations
+            few_shot_examples_path = os.path.join(
+                get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "train.csv"
+            )
+            few_shot_examples_df = pd.read_csv(few_shot_examples_path)
+            few_shot_examples_sampled_df = sample_few_shot_examples(
+                few_shot_examples_df, k=eval_k_demonstrations, seed=SEED
+            )
+
             test_dataset_path = os.path.join(get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "test.csv")
-            print(test_dataset_path)
             test_dataset = load_dataset("csv", data_files={"test": test_dataset_path})["test"]
             test_dataset = test_dataset.map(
                 lambda examples: {
                     "text": format_prompts(
-                        examples=examples, eos_token=tokenizer.eos_token, prompt_template=prompt, do_eval=True, context_weight_at_end=CONTEXT_WEIGHT_AT_END
+                        examples=examples,
+                        eos_token=tokenizer.eos_token,
+                        prompt_template_dict=prompt_template_dict,
+                        context_weight_format=eval_ctx_weight_format,
+                        context_weight_at_end=CONTEXT_WEIGHT_AT_END,
+                        demonstrations_df=few_shot_examples_sampled_df,
+                        do_eval=True,
                     ),
                     "labels": examples["answer"],
                 },
                 batched=True,
             )
-            eval_results = evaluate_model(model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)))
+            eval_results = evaluate_model(
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)), batch_sz=1
+            )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
             )
@@ -324,7 +372,12 @@ def main():
             query_only_eval_metrics = compute_metrics_only_og_correct(eval_results.to_pandas())
 
             # Save results
-            test_results_dir = os.path.join(results_dir, eval_name)
+            test_results_dir = construct_test_results_dir(
+                results_dir,
+                eval_name=eval_name,
+                k_demonstrations=eval_k_demonstrations,
+                context_weight_format=eval_ctx_weight_format,
+            )
             os.makedirs(test_results_dir, exist_ok=True)
 
             test_results_path = os.path.join(test_results_dir, "test.csv")
