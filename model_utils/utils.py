@@ -151,6 +151,16 @@ def prepare_peft_model(
     model.print_trainable_parameters()
     return model
 
+def merge_save_peft(peft_model, tokenizer, path):
+    """ Merge the peft model and save to path."""
+
+    merged_model = peft_model.merge_and_unload()
+    merged_model.save_pretrained(path)
+    tokenizer.save_pretrained(path)
+    tokenizer.padding_side = "left"
+
+    return merged_model, tokenizer
+
 
 ##############
 # EVALUATION #
@@ -625,6 +635,8 @@ GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
 
 MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
