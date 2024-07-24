@@ -62,7 +62,7 @@ def load_model_and_tokenizer(
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,
         )
-    else:
+    else: 
         bnb_config = None
 
     if peft_config is not None:
@@ -124,6 +124,7 @@ def prepare_tokenizer(model, add_pad_token=False):
     #     model.resize_token_embeddings(len(tokenizer))
 
     tokenizer.padding_side = "right"  # for kbit training apparently you need to pad on the right
+    tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
 
@@ -442,6 +443,11 @@ def construct_paths_and_dataset_kwargs(
         ),
     }
 
+    # Check if model id is a path
+    if os.path.exists(MODEL_ID):
+        # parse only the model id
+        MODEL_ID = os.path.basename(MODEL_ID)
+        
     # Construct model id
     model_id = MODEL_ID
     model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""

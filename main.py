@@ -259,12 +259,15 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
+            dtype=dtype,
         )
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
             # SFT Train
-            collator = DataCollatorForCompletionOnlyLM(response_template, tokenizer=tokenizer)
+            response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)[1:]
+
+            collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
                 model=model,
                 # tokenizer = tokenizer,
@@ -357,7 +360,7 @@ def main():
                 batched=True,
             )
             eval_results = evaluate_model(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)), batch_sz=1
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)), batch_sz=8
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
