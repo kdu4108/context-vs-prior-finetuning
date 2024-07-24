@@ -221,7 +221,14 @@ def main():
 
     # Load prompt template for chosen model
     train_mode = not NO_TRAIN
-    prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[MODEL_ID]
+    
+    # Check if local model
+    if os.path.exists(MODEL_ID):
+        model_id = os.path.basename(MODEL_ID)
+    else:
+        model_id = MODEL_ID
+    
+    prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[model_id]
     peft_config = (
         LoraConfig(
             r=64,
