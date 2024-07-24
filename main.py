@@ -266,7 +266,6 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
-            dtype=dtype,
         )
         if NO_TRAIN:
             print("Skipping training loop.")
@@ -393,7 +392,10 @@ def main():
             test_results_path = os.path.join(test_results_dir, "test.csv")
             test_metrics_path = os.path.join(test_results_dir, "metrics.json")
             test_metrics_query_only_path = os.path.join(test_results_dir, "metrics_query_only.json")
-
+            if eval_k_demonstrations > 0:
+                few_shot_examples_sampled_df.to_csv(
+                    os.path.join(test_results_dir, "few_shot_examples.csv"), index=False
+                )
             eval_results.to_csv(test_results_path, index=False)
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
                 json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
