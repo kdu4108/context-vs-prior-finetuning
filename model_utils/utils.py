@@ -25,6 +25,8 @@ def load_model_and_tokenizer(
     dtype: Optional[str] = "auto",
     device: str = "auto",
     attn_implementation: str = "sdpa",
+    try_load_as_peft: bool = False,
+    padding_side: str = "right",
 ):
     """
     Load the model and tokenizer from huggingface.
@@ -65,7 +67,7 @@ def load_model_and_tokenizer(
     else: 
         bnb_config = None
 
-    if peft_config is not None:
+    if peft_config is not None or try_load_as_peft:
         try:
             model = AutoPeftModelForCausalLM.from_pretrained(
                 model_id,
@@ -86,7 +88,7 @@ def load_model_and_tokenizer(
                 torch_dtype=dtype,
                 attn_implementation=attn_implementation,
             )
-            tokenizer = prepare_tokenizer(model)
+            tokenizer = prepare_tokenizer(model, padding_side=padding_side)
             if train_mode:
                 # If we are not training the model, we do not want to load it in peft mode
                 model = prepare_peft_model(model, peft_config=peft_config)
@@ -98,7 +100,7 @@ def load_model_and_tokenizer(
             torch_dtype=dtype,
             attn_implementation=attn_implementation,
         )
-        tokenizer = prepare_tokenizer(model)
+        tokenizer = prepare_tokenizer(model, padding_side=padding_side)
     print(f"Loaded model on device {model.device} with dtype {model.dtype}.")
 
     torch.cuda.empty_cache()
@@ -107,24 +109,12 @@ def load_model_and_tokenizer(
     return model, tokenizer
 
 
-def prepare_tokenizer(model, add_pad_token=False):
+def prepare_tokenizer(model, set_pad_token=True, padding_side="right"):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
-    # if "mistral" in model.config._name_or_path.lower():
-    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-    #     tokenizer.pad_token = "<|PAD|>"
-    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
-    #     model.resize_token_embeddings(len(tokenizer))
-    #     # tokenizer.pad_token = tokenizer.eos_token
-    #     # print("Setting pad token to EOS")
 
-    # if add_pad_token:
-    #     tokenizer.add_special_tokens({"pad_token": "<|PAD|>"})
-    #     tokenizer.pad_token = "<|PAD|>"
-    #     tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids("<|PAD|>")
-    #     model.resize_token_embeddings(len(tokenizer))
-
-    tokenizer.padding_side = "right"  # for kbit training apparently you need to pad on the right
-    tokenizer.pad_token = tokenizer.eos_token
+    tokenizer.padding_side = padding_side  # for kbit training apparently you need to pad on the right
+    if set_pad_token:
+        tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
 
