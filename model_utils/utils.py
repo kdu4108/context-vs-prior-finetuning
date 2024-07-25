@@ -156,7 +156,7 @@ def merge_save_peft(peft_model, tokenizer, path):
 # EVALUATION #
 ##############
 def is_response_correct(response: str, label: str) -> bool:
-    return label in response
+    return response.startswith(label)
 
 
 def compute_mr(df) -> Tuple[float, float, float]:
@@ -297,7 +297,6 @@ def evaluate_model(
     dataset: Dataset,
     max_new_tokens: int = 30,
     batch_sz: int = 8,  # "auto",
-    device: str = "auto",
 ):
     """
     Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
