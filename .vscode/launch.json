@@ -132,21 +132,48 @@
             "justMyCode": false
         },
         {
-            "name": "train 640 llama3 chat local",
+            "name": "train 2048 llama3.1 Instruct float",
             "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama2_hf/Llama-2-7b-chat-hf", "-S", "3", "-TS", "640", "-P", "-BS", "4", "-GA", "4"],
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "float", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 llama3.1 Instruct instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 llama3 Instruct float",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3_hf/Meta-Llama-3-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "float", "-O"],
             "justMyCode": false
         },
         {
             "name": "fewshot basefakepedia",
             "type": "debugpy",
             "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-SP", "nodup_relpid", "-F", "-S", "3", "-TS", "2048", "-TSS", "1000", "-NT"],
+            "justMyCode": false
+        },
+        {
+            "name": "attr",
+            "type": "debugpy",
+            "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-SP", "nodup_relpid", "-F", "-S", "1", "-TS", "16", "-NT"],
+            "args": ["--prior-to-context", "-CWF",  "instruction", "--n-samples", "4"],
             "justMyCode": false
         },
     ]
