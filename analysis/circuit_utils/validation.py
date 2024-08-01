@@ -2,37 +2,6 @@ from transformers import pipeline
 import pandas as pd
 from torch import Tensor
 
-from model_utils.utils import format_prompts, PROMPTS_DICT
-
-
-def preprocess_dataset(df, tokenizer, MODEL_TYPE):
-    def fun(group):
-        context_answer = group.answer.iloc[0] if group.weight_context.iloc[0] == 1.0 else group.answer.iloc[1]
-        prior_answer = group.answer.iloc[0] if group.weight_context.iloc[0] == 0.0 else group.answer.iloc[1]
-        return {
-            "context": context_answer,
-            "prior": prior_answer,
-        }
-
-    answers = df.groupby("context").apply(fun)
-    data = []
-    for i, row in df.iterrows():
-        inp = {
-            "weight_context": [row.weight_context],
-            "context": [row.context],
-            "query": [row.query],
-            "answer": [row.answer],
-        }
-        text = format_prompts(inp, tokenizer.eos_token, PROMPTS_DICT[MODEL_TYPE][0], do_eval=True)
-        out = row.to_dict()
-        out["text"] = text[0]
-        out["weight_context"] = inp["weight_context"][0]
-        out["counterfactual"] = (
-            answers.loc[row.context]["context"] if row.weight_context == 0.0 else answers.loc[row.context]["prior"]
-        )
-        data.append(out)
-    return pd.DataFrame(data)
-
 
 def get_true_false_ids(df, tokenizer):
     answers = df.answer.apply(lambda x: "\n" + x).tolist()
@@ -63,6 +32,7 @@ def generate(model, tokenizer, df, batch_size=10):
 
     texts = [row.text for i, row in df.iterrows()]
     out = pipe(texts)
+    
     return out
 
 
