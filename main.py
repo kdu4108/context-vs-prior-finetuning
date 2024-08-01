@@ -78,6 +78,7 @@ def get_args():
         help="Which modules to train with LoRA",
     )
     parser.add_argument("-TS", "--TRAIN_SIZE", type=int, default=320, help="Number of train examples")
+    parser.add_argument("-TSS", "--TEST_SIZE", type=int, default=100, help="Number of test examples")
     parser.add_argument("-F", "--LOAD_IN_4BIT", action="store_true", help="Whether to load in 4 bit")
     parser.add_argument("-E", "--LOAD_IN_8BIT", action="store_true", help="Whether to load in 8 bit")
     parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=4, help="Batch size for training (per device)")
@@ -134,6 +135,7 @@ def main():
     SUBSPLIT = args.SUBSPLIT
     SEED = args.SEED
     TRAIN_SIZE = args.TRAIN_SIZE
+    TEST_SIZE = args.TEST_SIZE
     MODEL_ID = args.MODEL_ID
     PEFT = args.PEFT
     LORA_MODULES = args.LORA_MODULES
@@ -325,6 +327,9 @@ def main():
 
     # Evaluate
     if not NO_EVAL:
+        # Set padding_side to left for all evals
+        tokenizer.padding_side = "left"
+        
         # Construct full list of eval configs
         evals: List[EvalConfig] = [
             EvalConfig(
@@ -366,10 +371,10 @@ def main():
                 batched=True,
             )
             eval_results = evaluate_model(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100)), batch_sz=8
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE)), batch_sz=8
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(100))
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE))
             )
             eval_results = eval_results.map(
                 lambda row: {
