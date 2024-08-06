@@ -613,7 +613,7 @@ BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE = (
 LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
     {
         "SYSTEM": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
-        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
+        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n\n{}",
         "END_OF_ROUND": "<|eot_id|>",
     },
     "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
@@ -759,7 +759,10 @@ def construct_query_with_demonstrations(
 
 
 def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
-    """Assume that train_df contains 0/1 context weight examples adjacent to each other."""
+    """
+    Assume that train_df contains 0/1 context weight examples adjacent to each other.
+    k - total number of few shot examples (k / 2 pairs)
+    """
     shot_indices = train_df[::2].sample(k // 2, random_state=seed).index
     shot_indices = [(i, i + 1) for i in shot_indices]
     shot_indices = np.array(shot_indices).flatten()
@@ -767,83 +770,83 @@ def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.Da
     return shot_sample
 
 
-# ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
-#     """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
+    """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
-# ### Instruction:
-# {}
+### Instruction:
+{}
 
-# ### Input:
-# {}
+### Input:
+{}
 
-# ### Response:
-# {}""",
-#     "Response:",
-# )
+### Response:
+{}""",
+    "Response:",
+)
 
-# GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
-#     """<start_of_turn>user
-# {}
+GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
+    """<start_of_turn>user
+{}
 
-# {}<end_of_turn>
-# <start_of_turn>model
-# {}""",
-#     "<start_of_turn>model",
-# )  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
+{}<end_of_turn>
+<start_of_turn>model
+{}""",
+    "<start_of_turn>model",
+)  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
 
-# GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
-#     """{}
-# Q: {}
-# A: {}""",
-#     "A:",
-# )
+GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
+    """{}
+Q: {}
+A: {}""",
+    "A:",
+)
 
-# PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
-#     """Instruct: {}
-# {}
-# Output: {}""",
-#     "Output:",
-# )
+PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
+    """Instruct: {}
+{}
+Output: {}""",
+    "Output:",
+)
 
-# MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
-#     "<s>[INST] {}\n{} [/INST] {}",
-#     "[/INST] ",
-# )  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
+MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
+    "<s>[INST] {}\n{} [/INST] {}",
+    "[/INST] ",
+)  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
 
-# LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
-#     """<s>[INST] <<SYS>>
-# {}
-# <</SYS>>
+LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
+    """<s>[INST] <<SYS>>
+{}
+<</SYS>>
 
-# {} [/INST]{}
-# """,
-#     "[/INST]",
-# )  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
+{} [/INST]{}
+""",
+    "[/INST]",
+)  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
 
-# LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
-#     """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
+    """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-# {}<|eot_id|><|start_header_id|>user<|end_header_id|>
+{}<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-# {}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{}
-# """,
-#     "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
-# )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{}
+""",
+    "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
+)  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 
-# PROMPTS_DICT = {
-#     "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
-#     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
-#     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-#     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-#     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-#     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
-#     "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
-# }
+PROMPTS_DICT = {
+    "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
+    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
+    "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
+}
 
 
 from typing import NamedTuple

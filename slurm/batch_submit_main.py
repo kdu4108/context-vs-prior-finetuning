@@ -4,7 +4,7 @@ from typing import List, Dict
 
 
 RUN_LOCALLY = False
-dataset_names = ["BaseFakepedia", "MultihopFakepedia", "YagoLlama2"]
+dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 # evals = json.dumps(
 #     [
 #         "BaseFakepedia",
@@ -25,26 +25,26 @@ evals = json.dumps(
             "k_demonstrations": 20,
             "context_weight_format": "instruction",
         },
-        {
-            "dataset_name": "MultihopFakepedia",
-            "k_demonstrations": 20,
-            "context_weight_format": "float",
-        },
-        {
-            "dataset_name": "MultihopFakepedia",
-            "k_demonstrations": 20,
-            "context_weight_format": "instruction",
-        },
-        {
-            "dataset_name": "YagoLlama2",
-            "k_demonstrations": 20,
-            "context_weight_format": "float",
-        },
-        {
-            "dataset_name": "YagoLlama2",
-            "k_demonstrations": 20,
-            "context_weight_format": "instruction",
-        },
+        # {
+        #     "dataset_name": "MultihopFakepedia",
+        #     "k_demonstrations": 20,
+        #     "context_weight_format": "float",
+        # },
+        # {
+        #     "dataset_name": "MultihopFakepedia",
+        #     "k_demonstrations": 20,
+        #     "context_weight_format": "instruction",
+        # },
+        # {
+        #     "dataset_name": "YagoLlama2",
+        #     "k_demonstrations": 20,
+        #     "context_weight_format": "float",
+        # },
+        # {
+        #     "dataset_name": "YagoLlama2",
+        #     "k_demonstrations": 20,
+        #     "context_weight_format": "instruction",
+        # },
     ],
     separators=(",", ":"),
 )
