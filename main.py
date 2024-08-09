@@ -284,7 +284,8 @@ def main():
                     x,
                     eos_token=tokenizer.eos_token,
                     prompt_template_dict=prompt_template_dict,
-                    context_weight_format=CONTEXT_WEIGHT_FORMAT,
+                    demonstrations_context_weight_format=None,
+                    query_context_weight_format=CONTEXT_WEIGHT_FORMAT,
                     context_weight_at_end=CONTEXT_WEIGHT_AT_END,
                     demonstrations_df=pd.DataFrame(),
                     do_eval=False,
@@ -331,13 +332,14 @@ def main():
         tokenizer.padding_side = "left"
         
         # Construct full list of eval configs
-        evals: List[EvalConfig] = [
-            EvalConfig(
-                dataset_name=DATASET_NAME,
-                k_demonstrations=0,
-                context_weight_format=CONTEXT_WEIGHT_FORMAT,
-            )
-        ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        # evals: List[EvalConfig] = [
+        #     EvalConfig(
+        #         dataset_name=DATASET_NAME,
+        #         k_demonstrations=0,
+        #         context_weight_format=CONTEXT_WEIGHT_FORMAT,
+        #     )
+        # ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        evals = [EvalConfig(**eval) for eval in EXTRA_EVALS]
         print(evals)
         for eval_name, eval_k_demonstrations, eval_ctx_weight_format in evals:
             print(
@@ -361,7 +363,8 @@ def main():
                         examples=examples,
                         eos_token=tokenizer.eos_token,
                         prompt_template_dict=prompt_template_dict,
-                        context_weight_format=eval_ctx_weight_format,
+                        demonstrations_context_weight_format=CONTEXT_WEIGHT_FORMAT,
+                        query_context_weight_format=eval_ctx_weight_format,
                         context_weight_at_end=CONTEXT_WEIGHT_AT_END,
                         demonstrations_df=few_shot_examples_sampled_df,
                         do_eval=True,

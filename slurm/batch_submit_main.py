@@ -4,7 +4,9 @@ from typing import List, Dict
 
 
 RUN_LOCALLY = False
-dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
+FEW_SHOT = True
+# dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
+dataset_names = ["MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 # evals = json.dumps(
 #     [
 #         "BaseFakepedia",
@@ -13,39 +15,72 @@ dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 #     ],
 #     separators=(",", ":")
 # )
+zero_shot_evals = [
+    {
+        "dataset_name": "BaseFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "float",
+    },
+    {
+        "dataset_name": "BaseFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "instruction",
+    },
+    {
+        "dataset_name": "MultihopFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "float",
+    },
+    {
+        "dataset_name": "MultihopFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "instruction",
+    },
+    # {
+    #     "dataset_name": "YagoLlama2",
+    #     "k_demonstrations": 0,
+    #     "context_weight_format": "float",
+    # },
+    # {
+    #     "dataset_name": "YagoLlama2",
+    #     "k_demonstrations": 0,
+    #     "context_weight_format": "instruction",
+    # },
+]
+few_shot_evals = [
+    {
+        "dataset_name": "BaseFakepedia",
+        "k_demonstrations": 20,
+        "context_weight_format": "float",
+    },
+    {
+        "dataset_name": "BaseFakepedia",
+        "k_demonstrations": 20,
+        "context_weight_format": "instruction",
+    },
+    {
+        "dataset_name": "MultihopFakepedia",
+        "k_demonstrations": 20,
+        "context_weight_format": "float",
+    },
+    {
+        "dataset_name": "MultihopFakepedia",
+        "k_demonstrations": 20,
+        "context_weight_format": "instruction",
+    },
+    # {
+    #     "dataset_name": "YagoLlama2",
+    #     "k_demonstrations": 20,
+    #     "context_weight_format": "float",
+    # },
+    # {
+    #     "dataset_name": "YagoLlama2",
+    #     "k_demonstrations": 20,
+    #     "context_weight_format": "instruction",
+    # },
+]
 evals = json.dumps(
-    [
-        {
-            "dataset_name": "BaseFakepedia",
-            "k_demonstrations": 20,
-            "context_weight_format": "float",
-        },
-        {
-            "dataset_name": "BaseFakepedia",
-            "k_demonstrations": 20,
-            "context_weight_format": "instruction",
-        },
-        # {
-        #     "dataset_name": "MultihopFakepedia",
-        #     "k_demonstrations": 20,
-        #     "context_weight_format": "float",
-        # },
-        # {
-        #     "dataset_name": "MultihopFakepedia",
-        #     "k_demonstrations": 20,
-        #     "context_weight_format": "instruction",
-        # },
-        # {
-        #     "dataset_name": "YagoLlama2",
-        #     "k_demonstrations": 20,
-        #     "context_weight_format": "float",
-        # },
-        # {
-        #     "dataset_name": "YagoLlama2",
-        #     "k_demonstrations": 20,
-        #     "context_weight_format": "instruction",
-        # },
-    ],
+    zero_shot_evals + few_shot_evals if FEW_SHOT else zero_shot_evals,
     separators=(",", ":"),
 )
 print(evals)
@@ -59,7 +94,7 @@ subsplit_names = [
 seeds = [0]
 train_sizes = [1200]
 # no_train_statuses = [False]
-no_train_statuses = [True]
+no_train_statuses = [True] if FEW_SHOT else [False]
 peft_modules = [
     json.dumps(["q_proj", "k_proj", "v_proj", "o_proj", "gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
     # json.dumps(["gate_proj", "up_proj", "down_proj"], separators=(",", ":")),
@@ -82,31 +117,33 @@ if RUN_LOCALLY:
     ]
 else:
     # FEWSHOT
-    model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
-        ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", False),
-        # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", False),
-        # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", False),
-        # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
-        ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", False),
-        # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
-        # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", True),
-    ]
+    if FEW_SHOT:
+        model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
+            # ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", False),
+            ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", False),
+            ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", False),
+        ]
     # FINETUNE
-    # model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
-    #     ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
-    #     ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
-    #     ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
-    #     ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
-    #     # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", True),
-    # ]
+    else:
+        model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
+            # ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", True),
+            ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
+            ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", True),
+        ]
 
 overwrite = False
 
