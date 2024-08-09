@@ -530,7 +530,8 @@ def format_prompts(
     examples: Union[Dataset, dict],
     eos_token: str,
     prompt_template_dict: str,
-    context_weight_format: str,
+    demonstrations_context_weight_format: str,
+    query_context_weight_format: str,
     context_weight_at_end: bool = False,
     demonstrations_df: pd.DataFrame = pd.DataFrame(),
     do_eval: bool = False,
@@ -557,7 +558,8 @@ def format_prompts(
             val_query=query,
             val_answer=answer,
             context_weight=context_weight,
-            context_weight_format=context_weight_format,
+            demonstrations_context_weight_format=demonstrations_context_weight_format,
+            query_context_weight_format=query_context_weight_format,
             context_weight_at_end=context_weight_at_end,
             do_eval=do_eval,
         )
@@ -722,18 +724,57 @@ def construct_query_with_demonstrations(
     val_query: str,
     val_answer: str,
     context_weight: int = 1.0,
-    context_weight_format: str = "float",
+    demonstrations_context_weight_format: str = "float",
+    query_context_weight_format: str = "float",
     context_weight_at_end: bool = False,
     do_eval: bool = False,
 ) -> str:
+    return (
+        construct_system_prompt(prompt_template_dict)
+        + construct_demonstrations(
+            prompt_template_dict=prompt_template_dict,
+            eos_token=eos_token,
+            demonstrations_df=demonstrations_df,  # can be empty
+            context_weight_format=demonstrations_context_weight_format,
+            context_weight_at_end=context_weight_at_end,
+        )
+        + construct_query(
+            prompt_template_dict=prompt_template_dict,
+            eos_token=eos_token,
+            val_context=val_context,
+            val_query=val_query,
+            val_answer=val_answer,
+            context_weight=context_weight,
+            context_weight_format=query_context_weight_format,
+            context_weight_at_end=context_weight_at_end,
+            do_eval=do_eval,
+        )
+    )
+
+
+def construct_system_prompt(prompt_template_dict):
+    return prompt_template_dict["SYSTEM"].format("Answer the following query considering the provided context.")
+
+
+def construct_demonstrations(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    demonstrations_df: pd.DataFrame,  # can be empty
+    context_weight_format: Optional[str] = "float",
+    context_weight_at_end: bool = False,
+):
+    if context_weight_format is None:
+        if demonstrations_df:
+            raise ValueError(
+                "context weight format for demonstrations is None but demonstrations_df is not empty. Either remove the demonstrations or specify how to format them."
+            )
+        else:
+            return ""
+
     format_ctx_weight_func = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["format_func"]
     query_template = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["query_template"][
         context_weight_at_end
     ]
-
-    system = prompt_template_dict["SYSTEM"].format(
-        "Answer the following query considering the provided context. Answer with only one word."
-    )
 
     # Construct the demontrations into the string (if they exist)
     rounds = []
@@ -745,17 +786,30 @@ def construct_query_with_demonstrations(
         round += prompt_template_dict["END_OF_ROUND"]
         rounds.append(round)
 
-    query = query_template.format(context=val_context, weight=format_ctx_weight_func(context_weight), query=val_query)
+    return "".join(rounds)
 
-    out = system
-    out += "".join(rounds)
-    out += prompt_template_dict["ROUND"].format(
+
+def construct_query(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    val_context: str,
+    val_query: str,
+    val_answer: str,
+    context_weight: int = 1.0,
+    context_weight_format: str = "float",
+    context_weight_at_end: bool = False,
+    do_eval: bool = False,
+):
+    format_ctx_weight_func = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["format_func"]
+    query_template = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["query_template"][
+        context_weight_at_end
+    ]
+    query = query_template.format(context=val_context, weight=format_ctx_weight_func(context_weight), query=val_query)
+    return prompt_template_dict["ROUND"].format(
         query,
         "" if do_eval else val_answer + prompt_template_dict["END_OF_ROUND"] + eos_token
         # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
     )
-
-    return out
 
 
 def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
