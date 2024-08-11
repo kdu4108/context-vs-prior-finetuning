@@ -5,8 +5,10 @@ from typing import List, Dict
 
 RUN_LOCALLY = False
 FEW_SHOT = True
+QUERY_ONLY = True
 # dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 dataset_names = ["MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
+# dataset_names = ["BaseFakepedia", "MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 # evals = json.dumps(
 #     [
 #         "BaseFakepedia",
@@ -79,11 +81,20 @@ few_shot_evals = [
     #     "context_weight_format": "instruction",
     # },
 ]
-evals = json.dumps(
-    zero_shot_evals + few_shot_evals if FEW_SHOT else zero_shot_evals,
-    separators=(",", ":"),
-)
-print(evals)
+query_only_evals = [
+    {
+        "dataset_name": "BaseFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "float",
+    },
+    {
+        "dataset_name": "MultihopFakepedia",
+        "k_demonstrations": 0,
+        "context_weight_format": "float",
+    },
+]
+evals = zero_shot_evals + few_shot_evals if FEW_SHOT else zero_shot_evals
+
 subsplit_names = [
     "nodup_relpid",
     # "nodup_relpid_obj",
@@ -109,6 +120,13 @@ peft_modules = [
 ]
 context_weight_formats = ["float", "instruction"]
 
+if QUERY_ONLY:
+    evals = query_only_evals
+    no_train_statuses = [True]
+
+evals = json.dumps(evals, separators=(",", ":"))
+print(evals)
+
 if RUN_LOCALLY:
     model_id_and_bs_and_ga_and_quantize_and_peft_tuples = [
         ("unsloth/mistral-7b-v0.2-bnb-4bit", 4, 4, "4bit", True),
@@ -123,8 +141,10 @@ else:
             # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", False),
             # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", False),
             # ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", False),
-            ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", False),
-            ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", False),
+            # ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", False),
+            ("unsloth/Meta-Llama-3.1-8B-bnb-4bit", 4, 4, "4bit", False),
+            ("unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit", 4, 4, "4bit", False),
             # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", False),
             # ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", False),
             # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", False),
@@ -137,15 +157,17 @@ else:
             # ("unsloth/mistral-7b-instruct-v0.2-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/llama-2-7b-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/llama-2-7b-chat-bnb-4bit", 4, 4, "4bit", True),
-            ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
-            ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/llama-3-8b-bnb-4bit", 4, 4, "4bit", True),
+            # ("unsloth/llama-3-8b-Instruct-bnb-4bit", 4, 4, "4bit", True),
+            ("unsloth/Meta-Llama-3.1-8B-bnb-4bit", 4, 4, "4bit", True),
+            ("unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/gemma-2b-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/gemma-7b-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/gemma-2b-it-bnb-4bit", 4, 4, "4bit", True),
             # ("unsloth/gemma-7b-it-bnb-4bit", 4, 4, "4bit", True),
         ]
 
-overwrite = False
+overwrite = True
 
 job_count = 0
 for ds in dataset_names:

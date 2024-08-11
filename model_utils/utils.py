@@ -615,7 +615,7 @@ BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE = (
 LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
     {
         "SYSTEM": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
-        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n\n{}",
+        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
         "END_OF_ROUND": "<|eot_id|>",
     },
     "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
@@ -657,11 +657,14 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/Meta-Llama-3.1-8B-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B": (BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
@@ -764,7 +767,7 @@ def construct_demonstrations(
     context_weight_at_end: bool = False,
 ):
     if context_weight_format is None:
-        if demonstrations_df:
+        if len(demonstrations_df) > 0:
             raise ValueError(
                 "context weight format for demonstrations is None but demonstrations_df is not empty. Either remove the demonstrations or specify how to format them."
             )

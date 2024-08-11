@@ -368,7 +368,7 @@ def main():
         # print(evals)
         for eval_name, eval_subsplit, eval_k_demonstrations, eval_ctx_weight_format in evals:
             print(
-                f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples and with context weight format of `{eval_ctx_weight_format}`."
+                f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples from {DATASET_NAME} and with context weight format of `{eval_ctx_weight_format}`."
             )
             ds_class: ContextQueryDataset = getattr(sys.modules[__name__], eval_name)()
 
