@@ -64,7 +64,7 @@ def load_model_and_tokenizer(
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,
         )
-    else: 
+    else:
         bnb_config = None
 
     if peft_config is not None or try_load_as_peft:
@@ -141,8 +141,9 @@ def prepare_peft_model(
     model.print_trainable_parameters()
     return model
 
+
 def merge_save_peft(peft_model, tokenizer, path):
-    """ Merge the peft model and save to path."""
+    """Merge the peft model and save to path."""
 
     merged_model = peft_model.merge_and_unload()
     merged_model.save_pretrained(path)
@@ -244,7 +245,7 @@ def evaluate_model_queries_only(
     )  # need to make the labels column
 
     encoded_dataset = queries_only_dataset.map(
-        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt"),
+        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt", add_special_tokens=False),
         batched=True,
         batch_size=batch_sz,
     ).select_columns(["input_ids", "attention_mask", "labels"])
@@ -449,11 +450,11 @@ def construct_paths_and_dataset_kwargs(
         ),
     }
 
-    # Check if model id is a path
-    if os.path.exists(MODEL_ID):
-        # parse only the model id
-        MODEL_ID = os.path.basename(MODEL_ID)
-        
+    # # Check if model id is a path
+    # if os.path.exists(MODEL_ID):
+    #     # parse only the model id
+    #     MODEL_ID = os.path.basename(MODEL_ID)
+
     # Construct model id
     model_id = MODEL_ID
     model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
@@ -594,7 +595,7 @@ Instruction: {weight}"""
 LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
     {
         "SYSTEM": "<|begin_of_text|><|start_header_id|>system<|end_header_id|>\n\n{}<|eot_id|>",
-        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n\n{}",
+        "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
         "END_OF_ROUND": "<|eot_id|>",
     },
     "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
@@ -633,9 +634,11 @@ GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
 
 MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
@@ -717,7 +720,7 @@ def construct_demonstrations(
     context_weight_at_end: bool = False,
 ):
     if context_weight_format is None:
-        if demonstrations_df:
+        if len(demonstrations_df) > 0:
             raise ValueError(
                 "context weight format for demonstrations is None but demonstrations_df is not empty. Either remove the demonstrations or specify how to format them."
             )

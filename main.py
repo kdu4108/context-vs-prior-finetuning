@@ -223,14 +223,14 @@ def main():
 
     # Load prompt template for chosen model
     train_mode = not NO_TRAIN
-    
-    # Check if local model
-    if os.path.exists(MODEL_ID):
-        model_id = os.path.basename(MODEL_ID)
-    else:
-        model_id = MODEL_ID
-    
-    prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[model_id]
+
+    # # Check if local model
+    # if os.path.exists(MODEL_ID):
+    #     model_id = os.path.basename(MODEL_ID)
+    # else:
+    #     model_id = MODEL_ID
+
+    prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[MODEL_ID]
     peft_config = (
         LoraConfig(
             r=64,
@@ -330,7 +330,7 @@ def main():
     if not NO_EVAL:
         # Set padding_side to left for all evals
         tokenizer.padding_side = "left"
-        
+
         # Construct full list of eval configs
         # evals: List[EvalConfig] = [
         #     EvalConfig(
@@ -343,12 +343,12 @@ def main():
         print(evals)
         for eval_name, eval_k_demonstrations, eval_ctx_weight_format in evals:
             print(
-                f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples and with context weight format of `{eval_ctx_weight_format}`."
+                f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples from {DATASET_NAME} and with context weight format of `{eval_ctx_weight_format}`."
             )
 
             # Collect data for few shot example demonstrations
             few_shot_examples_path = os.path.join(
-                get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "train.csv"
+                get_raw_data_dir(dataset_name=DATASET_NAME, subsplit=SUBSPLIT), "train.csv"
             )
             few_shot_examples_df = pd.read_csv(few_shot_examples_path)
             few_shot_examples_sampled_df = sample_few_shot_examples(
@@ -374,7 +374,10 @@ def main():
                 batched=True,
             )
             eval_results = evaluate_model(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE)), batch_sz=8
+                model=model,
+                tokenizer=tokenizer,
+                dataset=test_dataset.select(range(TEST_SIZE)),
+                batch_sz=8 if eval_k_demonstrations == 0 else 1,
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE))
