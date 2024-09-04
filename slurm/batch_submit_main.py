@@ -4,11 +4,11 @@ from typing import List, Dict
 
 
 RUN_LOCALLY = False
-FEW_SHOT = True
-QUERY_ONLY = True
+FEW_SHOT = False
+QUERY_ONLY = False
 # dataset_names = ["BaseFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
-dataset_names = ["MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
-# dataset_names = ["BaseFakepedia", "MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
+# dataset_names = ["MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
+dataset_names = ["BaseFakepedia", "MultihopFakepedia"]  # , "MultihopFakepedia", "YagoLlama2"]
 # evals = json.dumps(
 #     [
 #         "BaseFakepedia",
@@ -102,7 +102,7 @@ subsplit_names = [
     # "nodup_s_or_rel_or_obj",
     # "base",
 ]
-seeds = [0]
+seeds = [1, 2]
 train_sizes = [1200]
 # no_train_statuses = [False]
 no_train_statuses = [True] if FEW_SHOT else [False]
