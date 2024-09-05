@@ -176,5 +176,14 @@
             "args": ["--prior-to-context", "-CWF",  "instruction", "--n-samples", "4"],
             "justMyCode": false
         },
+        {
+            "name": "eval pscore",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M",  "openai-community/gpt2","-S", "1", "-NT"],
+            "justMyCode": false
+        },
     ]
 }

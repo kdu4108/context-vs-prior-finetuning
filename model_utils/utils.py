@@ -12,6 +12,7 @@ from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, Lora
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
 
+from model_utils.mi_utils import compute_sus_and_persuasion_scores
 
 #################
 # MODEL LOADING #
@@ -371,6 +372,77 @@ def evaluate_model(
     return dataset
 
 
+def evaluate_model_pscores(
+    model,
+    tokenizer,
+    dataset: Dataset,
+    format_func,
+    batch_sz: int = 8,  # "auto",
+):
+    """
+    Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
+    1. Generate predictions from text
+    2. Extract answer, compare to labels, and return accuracy
+    """
+    from collections import namedtuple
+
+    context_info = namedtuple("context_info", ["context", "context_weight"])
+    # Free gpu memory
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    if batch_sz == "auto":
+        batch_sz = int(2 * int(sum(get_gpu_memory()) / 1000))
+        print(f"Setting batch size to {batch_sz} for eval.")
+    tokenizer.padding_side = "left"
+    contexts = [
+        context_info(context=dataset["context"][i], context_weight=dataset["weight_context"][i])
+        for i in range(len(dataset))
+    ]
+
+    compute_sus_and_persuasion_scores(
+        query=dataset["query"][0],
+        entity=None,
+        contexts=contexts,
+        format_func=format_func,
+        model=model,
+        tokenizer=tokenizer,
+        answer_map=None,
+        bs=32,
+        answer_entity=None,
+    )
+
+    dataset = dataset.map(
+        lambda examples: {
+            "sus_and_pscores": compute_sus_and_persuasion_scores(
+                query=examples["query"],
+                entity=None,
+                contexts=contexts,
+                format_func=format_func,
+                model=model,
+                tokenizer=tokenizer,
+                answer_map=None,
+                bs=32,
+                answer_entity=None,
+            )
+        },
+        batched=True,
+    )
+
+    dataset = dataset.map(
+        lambda examples, i: {
+            "sus_score": examples["sus_and_pscores"][0],
+            "p_score": examples["sus_and_pscores"][1][
+                i
+            ],  # the contexts passed in to compute_sus_and_persuasion_scores are in the same order as the rows in the dataset.
+        },
+        with_indices=True,
+        batched=True,
+    )
+
+    return dataset
+
+
 #########################
 # EXPERIMENT MANAGEMENT #
 #########################
@@ -649,6 +721,7 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "openai-community/gpt2": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
 
 CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
@@ -670,6 +743,29 @@ CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
         },
     },
 }  # Given a format type, return (a) a function which will  map a given context weight (as a float) to its string representation AND (b) the query template for that format type.
+
+
+def create_pscore_format_func(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    demonstrations_df: pd.DataFrame,  # can be empty
+    demonstrations_context_weight_format: str = "float",
+    query_context_weight_format: str = "float",
+    context_weight_at_end: bool = False,
+):
+    return lambda query, entity, context: construct_query_with_demonstrations(
+        val_query=query,
+        val_context=context.context,
+        context_weight=context.context_weight,
+        val_answer=None,
+        prompt_template_dict=prompt_template_dict,
+        eos_token=eos_token,
+        demonstrations_df=demonstrations_df,
+        demonstrations_context_weight_format=demonstrations_context_weight_format,
+        query_context_weight_format=query_context_weight_format,
+        context_weight_at_end=context_weight_at_end,
+        do_eval=True,
+    )
 
 
 def construct_query_with_demonstrations(

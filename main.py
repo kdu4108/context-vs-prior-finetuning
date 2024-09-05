@@ -22,10 +22,12 @@ from peft import LoraConfig
 from model_utils.utils import (
     construct_paths_and_dataset_kwargs,
     construct_artifact_name,
+    create_pscore_format_func,
     format_prompts,
     MODEL_ID_TO_TEMPLATES_DICT,
     evaluate_model,
     evaluate_model_queries_only,
+    evaluate_model_pscores,
     load_model_and_tokenizer,
     get_raw_data_dir,
     compute_metrics,
@@ -105,7 +107,13 @@ def get_args():
         "-EV",
         "--EXTRA_EVALS",
         type=json.loads,
-        default=[],
+        default=[
+            {
+                "dataset_name": "BaseFakepedia",
+                "k_demonstrations": 0,
+                "context_weight_format": "float",
+            },
+        ],
         help="Datasets on which to run evals. Expected format: a List of Dicts containing {'dataset_name': str, 'k_demonstrations': int, 'context_weight_format': str}",
     )
     parser.add_argument(
@@ -119,6 +127,12 @@ def get_args():
         "--NO-EVAL",
         action="store_true",
         help="Whether to evaluate on test set",
+    )
+    parser.add_argument(
+        "-NPE",
+        "--NO-PSCORE-EVAL",
+        action="store_true",
+        help="Whether to evaluate on test set with pscores",
     )
     parser.add_argument(
         "-O",
@@ -143,6 +157,7 @@ def main():
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
     EXTRA_EVALS = args.EXTRA_EVALS
     NO_EVAL = args.NO_EVAL
+    NO_PSCORE_EVAL = args.NO_PSCORE_EVAL
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
     CONTEXT_WEIGHT_AT_END = args.CONTEXT_WEIGHTS_END
@@ -373,14 +388,17 @@ def main():
                 },
                 batched=True,
             )
+            subsampled_test_dataset = test_dataset.select(range(TEST_SIZE))
             eval_results = evaluate_model(
                 model=model,
                 tokenizer=tokenizer,
-                dataset=test_dataset.select(range(TEST_SIZE)),
+                dataset=subsampled_test_dataset,
                 batch_sz=8 if eval_k_demonstrations == 0 else 1,
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE))
+                model=model,
+                tokenizer=tokenizer,
+                dataset=subsampled_test_dataset,
             )
             eval_results = eval_results.map(
                 lambda row: {
@@ -388,6 +406,23 @@ def main():
                     "query_only_is_correct": query_to_is_correct[row["query"]],
                 }
             )
+            if not NO_PSCORE_EVAL:
+                pscore_format_func = create_pscore_format_func(
+                    prompt_template_dict=prompt_template_dict,
+                    eos_token=tokenizer.eos_token,
+                    demonstrations_df=few_shot_examples_sampled_df,
+                    demonstrations_context_weight_format=CONTEXT_WEIGHT_FORMAT,
+                    query_context_weight_format=eval_ctx_weight_format,
+                    context_weight_at_end=CONTEXT_WEIGHT_AT_END,
+                )
+                p_score_results = evaluate_model_pscores(
+                    model=model,
+                    tokenizer=tokenizer,
+                    dataset=subsampled_test_dataset,
+                    format_func=pscore_format_func,
+                    batch_sz=8 if eval_k_demonstrations == 0 else 1,
+                )
+
             eval_metrics = compute_metrics(eval_results.to_pandas())
             query_only_eval_metrics = compute_metrics_only_og_correct(eval_results.to_pandas())
 
@@ -403,11 +438,16 @@ def main():
             test_results_path = os.path.join(test_results_dir, "test.csv")
             test_metrics_path = os.path.join(test_results_dir, "metrics.json")
             test_metrics_query_only_path = os.path.join(test_results_dir, "metrics_query_only.json")
+            test_results_pscore_path = os.path.join(test_results_dir, "test_pscore.csv")
+
             if eval_k_demonstrations > 0:
                 few_shot_examples_sampled_df.to_csv(
                     os.path.join(test_results_dir, "few_shot_examples.csv"), index=False
                 )
             eval_results.to_csv(test_results_path, index=False)
+            if not NO_PSCORE_EVAL:
+                p_score_results.to_csv(test_results_pscore_path, index=False)
+
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
                 json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
             with open(test_metrics_query_only_path, "w", encoding="utf-8") as fp:
