@@ -9,17 +9,20 @@ def get_rank(x, indices):
 def get_prob(x, indices):
     return x.softmax(-1)[range(len(x)), indices]
 
-def get_ranks(logits, indices, aggregation="median"):
-    if aggregation == "mean":
-        return torch.stack([get_rank(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float().mean(-1).unsqueeze(1)
-    elif aggregation == "median":
-        return torch.stack([get_rank(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float().median(-1).values.unsqueeze(1)
-    
-def get_probs(logits, indices, aggregation="median"):
-    if aggregation == "mean":
-        return torch.stack([get_prob(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float().mean(-1).unsqueeze(1)
-    elif aggregation == "median":
-        return torch.stack([get_prob(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float().median(-1).values.unsqueeze(1)
+def get_ranks(logits, indices):
+    ranks = torch.stack([get_rank(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float()
+    stdv = ranks.std(-1).unsqueeze(1)
+    mean = ranks.mean(-1).unsqueeze(1)
+    median = ranks.median(-1).values.unsqueeze(1)
+    return mean, stdv, median
+
+def get_probs(logits, indices):
+    probs = torch.stack([get_prob(logits[i].cpu().detach(), indices.cpu().detach()) for i in range(len(logits))]).float()
+    stdv = probs.std(-1).unsqueeze(1)
+    mean = probs.mean(-1).unsqueeze(1)
+    median = probs.median(-1).values.unsqueeze(1)
+    return mean, stdv, median
+
     
 def get_logits(logits, indices):
     print(logits.shape, indices.shape)

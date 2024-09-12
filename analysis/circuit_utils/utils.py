@@ -21,6 +21,7 @@ def get_default_parser():
     parser.add_argument("--finetune-seed", "-FTS", default=3, type=int)
     parser.add_argument("--finetune-training-samples", "-FTTS", default=2048, type=int)
     parser.add_argument("--finetuned", action="store_true")
+    parser.add_argument("--load-4bit", action="store_true")
     parser.add_argument("--shots", default=10, type=int)
     parser.add_argument("--dataset", "-DS", type=str, help="Name of the dataset class", default="BaseFakepedia")
     parser.add_argument(
@@ -45,7 +46,7 @@ def paths_from_args(args):
         args.shots = 0
         MODEL_NAME = f"{args.model_id}-{args.finetune_configuration}-{args.finetune_training_args}-cwf_{args.context_weight_format}"
     else:
-        MODEL_NAME = f"{args.model_id}-{args.finetune_training_args}-NT-cwf_float"
+        MODEL_NAME = f"{args.model_id}-{args.finetune_training_args}-NT-cwf_{args.context_weight_format}"
     PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     DATAROOT = os.path.join(PROJECT_DIR, "data", args.dataset)
     TRAIN_DATA = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
@@ -80,9 +81,11 @@ def paths_from_args(args):
 
 def load_model_and_tokenizer_from_args(paths, args):
     if args.finetuned:
-        model, tokenizer = load_model_and_tokenizer(paths["MERGED_MODEL"], False, False, False, padding_side="left")
+        print("Loading finetuned model:", paths["MERGED_MODEL"])
+        model, tokenizer = load_model_and_tokenizer(paths["MERGED_MODEL"], args.load_4bit, False, False, padding_side="left")
     else:
-        model, tokenizer = load_model_and_tokenizer(paths["BASE_MODEL"], False, False, False, padding_side="left")
+        print("Loading base model:", paths["BASE_MODEL"])
+        model, tokenizer = load_model_and_tokenizer(paths["BASE_MODEL"], args.load_4bit, False, False, padding_side="left")
     return model, tokenizer
 
 
@@ -166,7 +169,9 @@ def collect_data(args, PATHS, tokenizer, device):
     incorrect_index = torch.tensor([tokenizer.encode("\n" + a)[1] for a in corrupted_prompt.answer]).to(device)
 
     clean_data = clean_prompt
+    clean_data.reset_index(drop=True, inplace=True)
     corrupted_data = corrupted_prompt
+    corrupted_data.reset_index(drop=True, inplace=True)
     clean_prompt = clean_prompt.text.tolist()
     corrupted_prompt = corrupted_prompt.text.tolist()
     
