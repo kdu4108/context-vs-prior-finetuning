@@ -113,7 +113,7 @@ def prepare_tokenizer(model, set_pad_token=True, padding_side="right"):
     tokenizer = AutoTokenizer.from_pretrained(model.config._name_or_path)
 
     tokenizer.padding_side = padding_side  # for kbit training apparently you need to pad on the right
-    if set_pad_token:
+    if set_pad_token and tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
     return tokenizer
 
@@ -633,12 +633,23 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
+    "Mistral-7B-Instruct-v0.3": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
+    "Mistral-7B-v0.3": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
 
 CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
