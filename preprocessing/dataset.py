@@ -101,9 +101,9 @@ class MultihopFakepedia(BaseFakepedia):
 class Arithmetic(ContextQueryDataset):
     def __init__(
         self,
-        train_path: str = "data/Arithmetic/train.csv",
-        val_path: str = "data/Arithmetic/val.csv",
-        test_path: str = "data/Arithmetic/test.csv",
+        train_path: str = "data/Arithmetic/splits/base/train.csv",
+        val_path: str = "data/Arithmetic/splits/base/val.csv",
+        test_path: str = "data/Arithmetic/splits/base/test.csv",
         train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -114,6 +114,30 @@ class Arithmetic(ContextQueryDataset):
         self._set_train_data()
         self._set_val_data()
         self._set_test_data()
+
+    def _set_train_data(self) -> None:
+        """Set the self.train_data field to the dataset."""
+        train_df = load_dataset_from_path(self.train_path)
+        train_df["answer"] = train_df["answer"].apply(str)
+        train_df["prior_answer"] = train_df["prior_answer"].apply(str)
+        train_df["ctx_answer"] = train_df["ctx_answer"].apply(str)
+        self.train_data = Dataset.from_pandas(train_df[: self.train_size], split="train", preserve_index=False)
+
+    def _set_val_data(self) -> None:
+        """Set the self.val_data field to the dataset."""
+        val_df = load_dataset_from_path(self.val_path)
+        val_df["answer"] = val_df["answer"].apply(str)
+        val_df["prior_answer"] = val_df["prior_answer"].apply(str)
+        val_df["ctx_answer"] = val_df["ctx_answer"].apply(str)
+        self.val_data = Dataset.from_pandas(val_df, split="val", preserve_index=False)
+
+    def _set_test_data(self) -> None:
+        """Set the self.test_data field to the dataset."""
+        test_df = load_dataset_from_path(self.test_path)
+        test_df["answer"] = test_df["answer"].apply(str)
+        test_df["prior_answer"] = test_df["prior_answer"].apply(str)
+        test_df["ctx_answer"] = test_df["ctx_answer"].apply(str)
+        self.test_data = Dataset.from_pandas(test_df, split="test", preserve_index=False)
 
 
 class Yago(ContextQueryDataset):

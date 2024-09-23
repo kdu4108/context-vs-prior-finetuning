@@ -176,5 +176,14 @@
             "args": ["--prior-to-context", "-CWF",  "instruction", "--n-samples", "4"],
             "justMyCode": false
         },
+        {
+            "name": "arithmetic",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["Arithmetic", "-NT"," -M", "unsloth/llama-3-8b-Instruct-bnb-4bit", "-F", "-SP", "base"],
+            "justMyCode": false
+        },
     ]
 }
