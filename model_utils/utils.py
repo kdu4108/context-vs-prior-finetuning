@@ -396,6 +396,7 @@ def evaluate_model_pscores(
     1. Generate predictions from text
     2. Extract answer, compare to labels, and return accuracy
     """
+    # import pdb; pdb.set_trace()
     from collections import namedtuple
 
     context_info = namedtuple("context_info", ["context", "context_weight"])
@@ -412,45 +413,27 @@ def evaluate_model_pscores(
         for i in range(len(dataset))
     ]
 
-    compute_sus_and_persuasion_scores(
-        query=dataset["query"][0],
-        entity=None,
-        contexts=contexts,
-        format_func=format_func,
-        model=model,
-        tokenizer=tokenizer,
-        answer_map=None,
-        bs=32,
-        answer_entity=None,
-    )
+    def unpack_sus_and_pscore(example, i):
+        sus_score, p_scores = compute_sus_and_persuasion_scores(
+            query=example["query"],
+            entity=None,
+            contexts=contexts,
+            format_func=format_func,
+            model=model,
+            tokenizer=tokenizer,
+            answer_map=None,
+            bs=batch_sz,
+            answer_entity=None,
+        )
 
-    dataset = dataset.map(
-        lambda examples: {
-            "sus_and_pscores": compute_sus_and_persuasion_scores(
-                query=examples["query"],
-                entity=None,
-                contexts=contexts,
-                format_func=format_func,
-                model=model,
-                tokenizer=tokenizer,
-                answer_map=None,
-                bs=32,
-                answer_entity=None,
-            )
-        },
-        batched=True,
-    )
-
-    dataset = dataset.map(
-        lambda examples, i: {
-            "sus_score": examples["sus_and_pscores"][0],
-            "p_score": examples["sus_and_pscores"][1][
+        return {
+            "sus_score": sus_score,
+            "p_score": p_scores[
                 i
             ],  # the contexts passed in to compute_sus_and_persuasion_scores are in the same order as the rows in the dataset.
-        },
-        with_indices=True,
-        batched=True,
-    )
+        }
+
+    dataset = dataset.map(unpack_sus_and_pscore, with_indices=True)
 
     return dataset
 

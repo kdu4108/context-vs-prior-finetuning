@@ -1,3 +1,4 @@
+import gc
 from typing import Callable, List, Dict, Optional, Set, Tuple, Union
 from collections import Counter
 import math
@@ -175,6 +176,8 @@ def sharded_score_model(
         output.append(
             f(model=model, tokenizer=tokenizer, prompts=prompts, start=start, end=end, **kwargs).detach().cpu()
         )
+        torch.cuda.empty_cache()
+        gc.collect()
 
     return torch.cat(output, dim=0).float()
 
@@ -438,17 +441,19 @@ def compute_sus_and_persuasion_scores(
     contexts_set = sorted(list(set(contexts)))
 
     prob_x_given_e = estimate_prob_x_given_e(entity, contexts_set, contexts_counter=contexts_counter)  # shape: (|X|,)
-    prob_y_given_context_and_entity = estimate_prob_y_given_context_and_entity(
-        query,
-        entity,
-        contexts_set,
-        format_func,
-        model,
-        tokenizer,
-        answer_map=answer_map,
-        bs=bs,
-        answer_entity=answer_entity,
-    )  # shape: (|X|, |Y|)
+    model.eval()
+    with torch.no_grad():
+        prob_y_given_context_and_entity = estimate_prob_y_given_context_and_entity(
+            query,
+            entity,
+            contexts_set,
+            format_func,
+            model,
+            tokenizer,
+            answer_map=answer_map,
+            bs=bs,
+            answer_entity=answer_entity,
+        )  # shape: (|X|, |Y|)
 
     prob_x_y_given_e = np.einsum("ij, i -> ij", prob_y_given_context_and_entity, prob_x_given_e)  # shape: (|X|, |Y|)
     prob_y_given_e = np.einsum("ij, i -> j", prob_y_given_context_and_entity, prob_x_given_e)  # shape: (|Y|,)

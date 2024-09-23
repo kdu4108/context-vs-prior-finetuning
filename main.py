@@ -445,7 +445,7 @@ def main():
                     tokenizer=tokenizer,
                     dataset=subsampled_test_dataset,
                     format_func=pscore_format_func,
-                    batch_sz=8 if eval_k_demonstrations == 0 else 1,
+                    batch_sz=4 if eval_k_demonstrations == 0 else 2,
                 )
 
             eval_metrics = compute_metrics(eval_results.to_pandas())
