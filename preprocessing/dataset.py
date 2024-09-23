@@ -98,6 +98,24 @@ class MultihopFakepedia(BaseFakepedia):
         self.name = "MultihopFakepedia"
 
 
+class Arithmetic(ContextQueryDataset):
+    def __init__(
+        self,
+        train_path: str = "data/Arithmetic/train.csv",
+        val_path: str = "data/Arithmetic/val.csv",
+        test_path: str = "data/Arithmetic/test.csv",
+        train_size: int = None,
+        seed: Optional[int] = None,
+    ) -> None:
+        super().__init__(
+            seed=seed, train_size=train_size, train_path=train_path, val_path=val_path, test_path=test_path
+        )
+        self.name = "Arithmetic"
+        self._set_train_data()
+        self._set_val_data()
+        self._set_test_data()
+
+
 class Yago(ContextQueryDataset):
     def __init__(
         self,
