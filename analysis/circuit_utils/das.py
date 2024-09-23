@@ -378,7 +378,7 @@ def auto_search(model, tokenizer, patching_arguments, n_layers=42, eps=0.3, thre
     while p_mean_source[-1, 0].item() <= p_mean_target[-1, 0].item() + eps:
         print("Refining...")
         print("Current base range: ", base_range)
-        for candidate in range(upper_bound, n_layers):
+        for candidate in range(max(base_range), n_layers):
             if p_mean_source[candidate-1, 0].item() - p_mean_source[candidate, 0].item() > phi and candidate not in base_range:
                 break
         print(f"Refined base range: {base_range + [candidate]}")
