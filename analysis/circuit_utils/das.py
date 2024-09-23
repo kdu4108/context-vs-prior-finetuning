@@ -11,11 +11,13 @@ from torch.nn import CrossEntropyLoss
 import torch
 from tqdm import trange
 from datasets import Dataset
+from nnsight import NNsight
 from main import load_model_and_tokenizer
 from model_utils.utils import is_response_correct, MODEL_ID_TO_TEMPLATES_DICT, construct_query_with_demonstrations 
 import random
 
 from analysis.circuit_utils.utils import encode_answer
+from analysis.circuit_utils.demonstrations import get_patched_residuals, get_probs, patch_scope, config_to_site
 
 def load_map_training_data(tokenizer, args, PATHS):
     train_data = pd.read_csv(PATHS["TRAIN_DATA"])
@@ -271,3 +273,125 @@ def print_random_sample(dataset, tokenizer, prefix=""):
     print("Target answer:", tokenizer.decode([sample['labels'][1]]))
     print("Source answer:", tokenizer.decode([sample['labels'][0]]))
     print()
+
+
+def get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=24, N_LAYERS=42, api=Gemma2, max_index=None):    
+    if max_index is not None:
+        target_tokens = target_tokens[:max_index]
+        source_tokens = source_tokens[:max_index]
+        source_attention_mask = source_attention_mask[:max_index]
+        target_attention_mask = target_attention_mask[:max_index]
+        source_answer = source_answer[:max_index]
+        target_answer = target_answer[:max_index]
+    residuals = []
+            # Step 1: Find upper bound
+    for i in range(0, target_tokens.shape[0], batch_size):
+        site.reset()
+        residuals.append(get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=False, validate=False))
+
+    residuals = torch.cat(residuals, dim=1)
+
+    logits = patch_scope(nnmodel, tokenizer, residuals, verbose=False)
+    p_mean_source, p_std_source, p_median_source = get_probs(logits, source_answer)
+    p_mean_target, p_std_target, p_median_target = get_probs(logits, target_answer)
+    return p_mean_source, p_mean_target
+    
+def auto_search(model, tokenizer, patching_arguments, n_layers=42, eps=0.3, thres=0.85, phi=0.05, batch_size=20, api=Gemma2, max_index=None, lower_bound=None, upper_bound=None):
+    _, _, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer = patching_arguments
+
+    nnmodel = NNsight(model)
+    
+    if upper_bound is None:
+        print("Step 1: Searching for upper bound...")
+        ## Adding layers can only increase the max probability -> binary search
+        left, right = 0, n_layers - 1
+        while left <= right:
+            upper_bound = (left + right) // 2
+            print(f"Trying upper bound: {upper_bound}")
+            site_config = {
+                "o":
+                {
+                    "layers": list(range(0, upper_bound)),
+                },
+            }
+            site = config_to_site(site_config, api=api, model=model)
+            p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
+            print(f"Upper bound: {upper_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {upper_bound}: {p_mean_source[upper_bound, 0].item():.4f}")
+            if p_mean_source.max().item() > thres:
+                right = upper_bound - 1
+            else:
+                left = upper_bound + 1
+
+        if p_mean_source.max().item() <= thres:
+            upper_bound = upper_bound + 1
+    else:
+        site_config = {
+            "o":
+            {
+                "layers": list(range(0, upper_bound)),
+        },
+        }
+        site = config_to_site(site_config, api=api, model=model)
+        p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
+        print(f"Upper bound: {upper_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {upper_bound}: {p_mean_source[upper_bound, 0].item():.4f}")
+
+    print(f"Upper bound: {upper_bound}")
+
+    if lower_bound is None:
+        print("Step 2: Searching for lower bound...")
+        ## Removing layers from left can only decrease the max probability -> binary search
+        left, right = 0, upper_bound
+        while left <= right:
+            lower_bound = (left + right) // 2
+            site_config = {
+                "o":
+                {
+                    "layers": list(range(lower_bound, upper_bound)),
+                },
+            }
+            site = config_to_site(site_config, api=api, model=model)
+            p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
+            print(f"Lower bound: {lower_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {lower_bound}: {p_mean_source[lower_bound, 0].item():.4f}, Probability at last layer: {p_mean_source[-1, 0].item():.4f}")
+            if p_mean_source.max().item() <= thres:
+                right = lower_bound - 1
+            else:
+                left = lower_bound + 1
+        if p_mean_source.max().item() <= thres:
+            lower_bound = lower_bound - 1
+    else:
+        site_config = {
+            "o":
+            {
+                "layers": list(range(lower_bound, upper_bound)),
+            },
+        }
+        site = config_to_site(site_config, api=api, model=model)
+        p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
+        print(f"Lower bound: {lower_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {lower_bound}: {p_mean_source[lower_bound, 0].item():.4f}, Probability at last layer: {p_mean_source[-1, 0].item():.4f}")
+    print(f"Lower bound: {lower_bound}")
+
+    base_range = list(range(lower_bound, upper_bound))
+    # Refine step
+    # Test whether refinement is needed
+
+    print("Step 3: Refining...")
+    while p_mean_source[-1, 0].item() <= p_mean_target[-1, 0].item() + eps:
+        print("Refining...")
+        print("Current base range: ", base_range)
+        for candidate in range(upper_bound, n_layers):
+            if p_mean_source[candidate-1, 0].item() - p_mean_source[candidate, 0].item() > phi and candidate not in base_range:
+                break
+        print(f"Refined base range: {base_range + [candidate]}")
+        base_range.append(candidate)
+        site_config = {
+            "o":
+            {
+                 "layers": base_range,
+            },
+        }
+        site = config_to_site(site_config, api=api, model=model)
+        p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
+        print(f"Out probability source: {p_mean_source[-1, 0].item():.4f}, Out probability target: {p_mean_target[-1, 0].item():.4f}, difference: {p_mean_source[-1, 0].item() - p_mean_target[-1, 0].item():.4f} (eps={eps})")
+
+    print("No more refinement needed")
+    return base_range
