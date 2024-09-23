@@ -82,6 +82,7 @@ def get_args():
     parser.add_argument("-F", "--LOAD_IN_4BIT", action="store_true", help="Whether to load in 4 bit")
     parser.add_argument("-E", "--LOAD_IN_8BIT", action="store_true", help="Whether to load in 8 bit")
     parser.add_argument("-BS", "--BATCH_SIZE", type=int, default=4, help="Batch size for training (per device)")
+    parser.add_argument("-EBS", "--EVAL_BATCH_SIZE", type=int, default=8, help="Batch size for evaluation (per device)")
     parser.add_argument("-GA", "--GRAD_ACCUM", type=int, default=4, help="Number of steps for gradient accumulation")
     parser.add_argument("-MSL", "--MAX_SEQ_LENGTH", type=int, default=2048, help="Maximum sequence length for training")
     parser.add_argument(
@@ -150,6 +151,7 @@ def main():
 
     # Model parameters
     BATCH_SZ = args.BATCH_SIZE
+    EVAL_BATCH_SZ = args.EVAL_BATCH_SIZE
     GRAD_ACCUM = args.GRAD_ACCUM
     MAX_SEQ_LENGTH = args.MAX_SEQ_LENGTH
 
@@ -257,6 +259,7 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
+            attn_implementation="eager" if "gemma" in model_id.lower() else "sdpa" # it is recommended to use eager for gemma models
         )
         print(f"Loaded pretrained model from {model_dir}")
     else:
@@ -268,12 +271,13 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
+            attn_implementation="eager" if "gemma" in model_id.lower() else "sdpa" # it is recommended to use eager for gemma models
         )
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
             # SFT Train
-            response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)[1:]
+            response_template_ids = tokenizer.encode(response_template, add_special_tokens=False) # [1:] to remove <|start_header_id|>
 
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
@@ -324,6 +328,7 @@ def main():
             trainer_stats = trainer.train()
             print("Trainer stats:", trainer_stats)
             trainer.save_model(model_dir)
+            print(f"Model saved to {model_dir}")
 
     # Evaluate
     if not NO_EVAL:
@@ -331,13 +336,14 @@ def main():
         tokenizer.padding_side = "left"
         
         # Construct full list of eval configs
-        evals: List[EvalConfig] = [
-            EvalConfig(
-                dataset_name=DATASET_NAME,
-                k_demonstrations=0,
-                context_weight_format=CONTEXT_WEIGHT_FORMAT,
-            )
-        ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        # evals: List[EvalConfig] = [
+        #     EvalConfig(
+        #         dataset_name=DATASET_NAME,
+        #         k_demonstrations=0,
+        #         context_weight_format=CONTEXT_WEIGHT_FORMAT,
+        #     )
+        # ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        evals: List[EvalConfig] = [EvalConfig(**eval) for eval in EXTRA_EVALS]
         print(evals)
         for eval_name, eval_k_demonstrations, eval_ctx_weight_format in evals:
             print(
@@ -371,7 +377,7 @@ def main():
                 batched=True,
             )
             eval_results = evaluate_model(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE)), batch_sz=8
+                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE)), batch_sz=EVAL_BATCH_SZ
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE))
