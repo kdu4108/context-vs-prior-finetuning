@@ -389,23 +389,23 @@ def main():
                 batched=True,
             )
             subsampled_test_dataset = test_dataset.select(range(TEST_SIZE))
-            eval_results = evaluate_model(
-                model=model,
-                tokenizer=tokenizer,
-                dataset=subsampled_test_dataset,
-                batch_sz=8 if eval_k_demonstrations == 0 else 1,
-            )
-            query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
-                model=model,
-                tokenizer=tokenizer,
-                dataset=subsampled_test_dataset,
-            )
-            eval_results = eval_results.map(
-                lambda row: {
-                    "query_only_prediction": query_to_prediction[row["query"]],
-                    "query_only_is_correct": query_to_is_correct[row["query"]],
-                }
-            )
+            # eval_results = evaluate_model(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     dataset=subsampled_test_dataset,
+            #     batch_sz=8 if eval_k_demonstrations == 0 else 1,
+            # )
+            # query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     dataset=subsampled_test_dataset,
+            # )
+            # eval_results = eval_results.map(
+            #     lambda row: {
+            #         "query_only_prediction": query_to_prediction[row["query"]],
+            #         "query_only_is_correct": query_to_is_correct[row["query"]],
+            #     }
+            # )
             if not NO_PSCORE_EVAL:
                 pscore_format_func = create_pscore_format_func(
                     prompt_template_dict=prompt_template_dict,
@@ -420,7 +420,7 @@ def main():
                     tokenizer=tokenizer,
                     dataset=subsampled_test_dataset,
                     format_func=pscore_format_func,
-                    batch_sz=8 if eval_k_demonstrations == 0 else 1,
+                    batch_sz=4 if eval_k_demonstrations == 0 else 2,
                 )
 
             eval_metrics = compute_metrics(eval_results.to_pandas())
