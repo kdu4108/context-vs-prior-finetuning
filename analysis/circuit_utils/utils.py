@@ -17,13 +17,32 @@ def get_default_parser():
     parser.add_argument("--model-id", default="Meta-Llama-3.1-8B-Instruct")
     parser.add_argument("--context-weight-format", "-CWF", default="float", choices=["float", "instruction"])
     parser.add_argument("--finetune-configuration", "-FTC", default="peftq_proj_k_proj_v_proj_o_proj")
-    parser.add_argument("--finetune-training-args", "-FTCA", default="bs8-ga2", type=str)
+    parser.add_argument("--finetune-training-args", "-FTCA", default=None, type=str)
     parser.add_argument("--finetune-seed", "-FTS", default=3, type=int)
     parser.add_argument("--finetune-training-samples", "-FTTS", default=2048, type=int)
     parser.add_argument("--finetuned", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     parser.add_argument("--shots", default=10, type=int)
     parser.add_argument("--dataset", "-DS", type=str, help="Name of the dataset class", default="BaseFakepedia")
+    parser.add_argument("--eval-dataset", "-EDS", type=str, help="Name of the evaluation dataset", default="BaseFakepedia")
+    parser.add_argument("--dataset-index", default=0, type=int)
+    parser.add_argument("--n-samples", default=-1, type=int)
+    parser.add_argument("--output-dir", default="patching_results")
+    parser.add_argument("--name", default="")
+    parser.add_argument("--context-info-flow", action="store_true")
+    parser.add_argument("--prior-info-flow", action="store_true")
+    parser.add_argument("--context-to-prior", action="store_true")
+    parser.add_argument("--prior-to-context", action="store_true")
+    parser.add_argument("--topk", default=10, type=int)
+    parser.add_argument("--new-few-shots", default=None, type=int)
+    parser.add_argument("--zero", action="store_true")
+    parser.add_argument("--no-filtering", action="store_true")
+    parser.add_argument("--batch-size", default=-1, type=int)
+    parser.add_argument("--force-model-confidence", action="store_true")
+    parser.add_argument("--heads", default=["o"], nargs="+")
+    parser.add_argument("--source-heads", default=["o", "q"], nargs="+")
+    parser.add_argument("--layer-range", "-LR", default=[0, -1], nargs=2, type=int)
+    parser.add_argument("--layers", default=None, nargs="+", type=int)
     parser.add_argument(
         "-SP",
         "--subsplit",
@@ -42,24 +61,32 @@ def get_default_parser():
     
 def paths_from_args(args):
     BASE_MODEL = os.path.join(args.model_store, args.model_id)
-    if args.finetuned:
-        args.shots = 0
-        MODEL_NAME = f"{args.model_id}-{args.finetune_configuration}-{args.finetune_training_args}-cwf_{args.context_weight_format}"
-    else:
-        MODEL_NAME = f"{args.model_id}-{args.finetune_training_args}-NT-cwf_{args.context_weight_format}"
     PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
     DATAROOT = os.path.join(PROJECT_DIR, "data", args.dataset)
     TRAIN_DATA = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
-    
     DATASET_CONFIG_NAME = f"{args.dataset}_{args.subsplit}-ts{args.finetune_training_samples}"
+    
+    models_dir = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models")
+    finetuned_dir = next((d for d in os.listdir(models_dir) if d.startswith(f"{args.model_id}-") and d.endswith(f"-cwf_{args.context_weight_format}") and (args.finetuned or "NT" in d)), None)
+    if args.finetuned:
+        if finetuned_dir and (args.finetune_training_args is None or args.finetune_training_args == "None"):
+            MODEL_NAME = finetuned_dir  
+        else:
+            MODEL_NAME = f"{args.model_id}-{args.finetune_configuration}-{args.finetune_training_args}-cwf_{args.context_weight_format}"
+    else:
+        if finetuned_dir and (args.finetune_training_args is None or args.finetune_training_args == "None"):
+            MODEL_NAME = finetuned_dir
+        else:
+            MODEL_NAME = f"{args.model_id}-{args.finetune_training_args}-NT-cwf_{args.context_weight_format}"
 
+    print(MODEL_NAME)
     
     MERGED_MODEL = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME, "merged")
     PEFT_MODEL = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME, "model")
     VAL_DATA_ALL = os.path.join(DATAROOT, "splits", args.subsplit, "val.csv")
     TRAIN_DATA_ALL = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
     
-    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.dataset}-k{args.shots}-cwf_{args.context_weight_format}")
+    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}-k{args.shots}-cwf_{args.context_weight_format}")
     FEW_SHOT_SAMPLE = os.path.join(RESULTS_DIR, "few_shot_sample.csv")
     TEST_DATA = os.path.join(RESULTS_DIR, "test.csv")
     
@@ -80,12 +107,13 @@ def paths_from_args(args):
     
 
 def load_model_and_tokenizer_from_args(paths, args):
+    attention_implementation = "eager" if "gemma" in args.model_id.lower() else "sdpa"
     if args.finetuned:
         print("Loading finetuned model:", paths["MERGED_MODEL"])
-        model, tokenizer = load_model_and_tokenizer(paths["MERGED_MODEL"], args.load_4bit, False, False, padding_side="left")
+        model, tokenizer = load_model_and_tokenizer(paths["MERGED_MODEL"], args.load_4bit, False, False, padding_side="left", attn_implementation=attention_implementation)
     else:
         print("Loading base model:", paths["BASE_MODEL"])
-        model, tokenizer = load_model_and_tokenizer(paths["BASE_MODEL"], args.load_4bit, False, False, padding_side="left")
+        model, tokenizer = load_model_and_tokenizer(paths["BASE_MODEL"], args.load_4bit, False, False, padding_side="left", attn_implementation=attention_implementation)
     return model, tokenizer
 
 
@@ -101,6 +129,26 @@ def filter_for_true_pairs(data):
     true_indices = sorted(list(true_indices) + [i+1 for i in true_indices])
     data = data.iloc[true_indices]
     return data
+
+def encode_answer(answers_source, answers_target, tokenizer, device, args):
+    # test whether we need to add a newline before the answer
+    prefix= ""
+    idx = 1
+    if MODEL_ID_TO_TEMPLATES_DICT[args.model_id][0]["ROUND"].replace("{}", "")[-1] == "\n":
+        logger.info(f"Round ends with newline, testing if we need to add it")
+        test_toks = tokenizer.encode("\n" + answers_source[0])
+        if tokenizer.decode(test_toks)[0] == "\n":
+            logger.info("Tokenizer merges newline and first token, adding it before the answer")
+            prefix = "\n"
+            idx = 2
+        else:
+            logger.info("Tokenizer does not merge newline and first token, not adding it")
+    elif "mistral" in args.model_id.lower():
+        prefix = "[/INST]" # mistral tokenizer tokenizes differently when there is a [\INST] in front of the answer
+        idx = 2
+    target_answer_index = torch.tensor([tokenizer.encode(prefix + a)[idx] for a in answers_target]).to(device)
+    source_answer_index = torch.tensor([tokenizer.encode(prefix + a)[idx] for a in answers_source]).to(device)
+    return source_answer_index, target_answer_index
 
 def collect_data(args, PATHS, tokenizer, device):
     test_data = pd.read_csv(PATHS["TEST_DATA"])
@@ -137,52 +185,55 @@ def collect_data(args, PATHS, tokenizer, device):
         args.n_samples = len(test_data)  
         
     if args.context_info_flow:
-        clean_prompt = test_data[test_data.weight_context == 1.0].reset_index(drop=True)
+        target_df = test_data[test_data.weight_context == 1.0].reset_index(drop=True)
     elif args.prior_info_flow:
-        clean_prompt = test_data[test_data.weight_context == 0.0]
-        clean_prompt = clean_prompt.groupby("answer").first().reset_index()
+        target_df = test_data[test_data.weight_context == 0.0]
+        target_df = target_df.groupby("answer").first().reset_index()
     else:
-        clean_prompt = test_data
+        target_df = test_data
         
-    clean_prompt = clean_prompt.iloc[args.dataset_index: args.dataset_index+args.n_samples]
+    target_df = target_df.iloc[args.dataset_index: args.dataset_index+args.n_samples]
     
     if args.context_to_prior:
-        corrupted_prompt = clean_prompt.copy()[clean_prompt.weight_context == 0.0]
-        clean_prompt = clean_prompt[clean_prompt.weight_context == 1.0]
+        source_df = target_df.copy()[target_df.weight_context == 0.0]
+        target_df = target_df[target_df.weight_context == 1.0]
     elif args.prior_to_context:
-        corrupted_prompt = clean_prompt.copy()[clean_prompt.weight_context == 1.0]
-        clean_prompt = clean_prompt[clean_prompt.weight_context == 0.0]
+        source_df = target_df.copy()[target_df.weight_context == 1.0]
+        target_df = target_df[target_df.weight_context == 0.0]
     elif args.context_info_flow or args.prior_info_flow:
-        clean_to_corrupted_index =  [(i + 1) % len(clean_prompt) for i in range(len(clean_prompt))]
-        corrupted_prompt = clean_prompt.iloc[clean_to_corrupted_index]
+        clean_to_corrupted_index =  [(i + 1) % len(target_df) for i in range(len(target_df))]
+        source_df = target_df.iloc[clean_to_corrupted_index]
     else:
-        clean_to_corrupted_index =  [(i + 1) if (i % 2) == 0 else i-1 for i in range(len(clean_prompt))]
-        corrupted_prompt = clean_prompt.iloc[clean_to_corrupted_index]
+        clean_to_corrupted_index =  [(i + 1) if (i % 2) == 0 else i-1 for i in range(len(target_df))]
+        source_df = target_df.iloc[clean_to_corrupted_index]
     
     if args.n_samples == -1:
-        args.n_samples = len(clean_prompt)
-    elif args.n_samples > len(clean_prompt):
-        logger.warning(f"Only {len(clean_prompt)} samples available, reducing n_samples to this value")
-        args.n_samples = len(clean_prompt)
-        
-    correct_index = torch.tensor([tokenizer.encode("\n" + a)[1] for a in clean_prompt.answer]).to(device)
-    incorrect_index = torch.tensor([tokenizer.encode("\n" + a)[1] for a in corrupted_prompt.answer]).to(device)
+        args.n_samples = len(target_df)
+    elif args.n_samples > len(target_df):
+        logger.warning(f"Only {len(target_df)} samples available, reducing n_samples to this value")
+        args.n_samples = len(target_df)
+    
+    source_answer_index, target_answer_index = encode_answer(source_df.answer.tolist(), target_df.answer.tolist(), tokenizer, device, args)
 
-    clean_data = clean_prompt
-    clean_data.reset_index(drop=True, inplace=True)
-    corrupted_data = corrupted_prompt
-    corrupted_data.reset_index(drop=True, inplace=True)
-    clean_prompt = clean_prompt.text.tolist()
-    corrupted_prompt = corrupted_prompt.text.tolist()
+    same_answer_indices = source_answer_index == target_answer_index
+    target_df = target_df[~same_answer_indices.cpu().numpy()]
+    source_df = source_df[~same_answer_indices.cpu().numpy()]
+    source_answer_index = source_answer_index[~same_answer_indices]
+    target_answer_index = target_answer_index[~same_answer_indices]
     
-    clean_tokens = tokenizer(clean_prompt, return_tensors="pt", padding=True)
-    attention_mask_clean = clean_tokens["attention_mask"].to(device)
-    corrupted_tokens = tokenizer(corrupted_prompt, return_tensors="pt", padding=True)
-    attention_mask_corrupted = corrupted_tokens["attention_mask"].to(device)
-    clean_tokens = clean_tokens["input_ids"].to(device)
-    corrupted_tokens = corrupted_tokens["input_ids"].to(device)
+    target_df.reset_index(drop=True, inplace=True)
+    source_df.reset_index(drop=True, inplace=True)
+    target_text = target_df.text.tolist()
+    source_text = source_df.text.tolist()
     
-    return clean_data, corrupted_data, clean_tokens, corrupted_tokens, correct_index, incorrect_index, attention_mask_clean, attention_mask_corrupted
+    target_tokens = tokenizer(target_text, return_tensors="pt", padding=True)
+    attention_mask_target = target_tokens["attention_mask"].to(device)
+    source_tokens = tokenizer(source_text, return_tensors="pt", padding=True)
+    attention_mask_source = source_tokens["attention_mask"].to(device)
+    target_tokens = target_tokens["input_ids"].to(device)
+    source_tokens = source_tokens["input_ids"].to(device)
+    
+    return target_df, source_df, target_tokens, source_tokens, target_answer_index, source_answer_index, attention_mask_target, attention_mask_source
 
 
 def combine_batches(list_of_outs):
@@ -221,3 +272,6 @@ def batch_act_patch(args, nnmodel, sites, clean_tokens, corrupted_tokens, correc
         
     all_results = combine_batches(results)
     return all_results
+
+def ptd(toks):
+    print(tokenizer.decode(toks))
