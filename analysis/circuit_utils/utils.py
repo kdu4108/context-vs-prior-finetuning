@@ -133,21 +133,23 @@ def filter_for_true_pairs(data):
 def encode_answer(answers_source, answers_target, tokenizer, device, args):
     # test whether we need to add a newline before the answer
     prefix= ""
-    idx = 1
+    idx = 0
     if MODEL_ID_TO_TEMPLATES_DICT[args.model_id][0]["ROUND"].replace("{}", "")[-1] == "\n":
         logger.info(f"Round ends with newline, testing if we need to add it")
         test_toks = tokenizer.encode("\n" + answers_source[0])
+        print(test_toks)
         if tokenizer.decode(test_toks)[0] == "\n":
             logger.info("Tokenizer merges newline and first token, adding it before the answer")
             prefix = "\n"
-            idx = 2
+            idx = 1
         else:
             logger.info("Tokenizer does not merge newline and first token, not adding it")
     elif "mistral" in args.model_id.lower():
         prefix = "[/INST]" # mistral tokenizer tokenizes differently when there is a [\INST] in front of the answer
-        idx = 2
-    target_answer_index = torch.tensor([tokenizer.encode(prefix + a)[idx] for a in answers_target]).to(device)
-    source_answer_index = torch.tensor([tokenizer.encode(prefix + a)[idx] for a in answers_source]).to(device)
+        idx = 1
+
+    target_answer_index = torch.tensor([tokenizer.encode(prefix + a, add_special_tokens=False)[idx] for a in answers_target]).to(device)
+    source_answer_index = torch.tensor([tokenizer.encode(prefix + a, add_special_tokens=False)[idx] for a in answers_source]).to(device)
     return source_answer_index, target_answer_index
 
 def collect_data(args, PATHS, tokenizer, device):
