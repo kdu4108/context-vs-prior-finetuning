@@ -1,9 +1,14 @@
 import plotly.express as px
 from plotly.subplots import make_subplots
 import plotly.graph_objects as go
+from plotly.colors import n_colors
 import torch
 import numpy as np
 import einops
+from pycolors import TailwindColorPalette, to_rgb
+
+COLORS = TailwindColorPalette()
+
 
 update_layout_set = {
     "xaxis_range", "yaxis_range", "hovermode", "xaxis_title", "yaxis_title", "colorbar", "colorscale", "coloraxis", "title_x", "bargap", "bargroupgap", "xaxis_tickformat",
@@ -395,807 +400,13 @@ PATCH_MAIN = 0.5
 PATCH_ALT = 0.3
 RECT_WIDTH= 0.05
 
-# def get_name(head, shorten=False):
-#     if head.startswith('q'):
-#         return f'Attn Query{"<br>" if shorten else " "}(all heads)'
-#     elif head.startswith('o'):
-#         return f'Attn Output{"<br>" if shorten else " "}(all heads)'
-#     elif head.startswith('m'):
-#         return 'MLP'
-#     else:
-#         return head
-    
-# def add_flow_chart(fig, x_pos, layers, color, q_y_offset=0, q_x_offset=0, head='q', shorten_legend=False):
-#     if head.startswith('q'):
-#         symbol = 'circle'
-#         x_offset = -RECT_WIDTH
-#         y_offset = -2*q_y_offset
-#     elif head.startswith('o'):
-#         symbol = 'diamond'
-#         x_offset =  -0.5*RECT_WIDTH
-#         y_offset = 2*q_y_offset
-#     elif head.startswith('mlp'):
-#         head = head.replace('mlp', 'm')
-#         symbol = 'square'
-#         x_offset = 2*q_x_offset
-#         y_offset = 3.5*q_y_offset
-#     else:
-#         raise ValueError("Invalid head type. Choose 'q', 'o' or 'mlp'.")
-    
-#     if not head.endswith('cross'):
-#         fig.add_trace(go.Scatter(
-#             x=[x_pos + x_offset/2] * len(layers),
-#             y=[el + y_offset for el in layers],
-#             mode='markers+text',
-#             text=[head] * len(layers),
-#             marker=dict(size=15, color=color, symbol=symbol, line=dict(color=color, width=2)),
-#             showlegend=False,
-#         ), row=1, col=1)
-    
-#     # input     
-#     for y in layers:
-#         # add rectangle (red dotted) for the patching
-#         if head.startswith('m'):
-#             fig.add_trace(go.Scatter(
-#                 x=[MAIN_LINE, MAIN_LINE + RECT_WIDTH, MAIN_LINE + RECT_WIDTH, MAIN_LINE],
-#                 y=[y+2*q_y_offset, y+2*q_y_offset, y+5*q_y_offset, y+5*q_y_offset],
-#                 mode='lines',
-#                 line=dict(color='red', width=1, dash='dot'),
-#                 showlegend=False
-#             ), row=1, col=1
-#             )
-#         else:
-#             fig.add_trace(go.Scatter(
-#                 x=[MAIN_LINE, MAIN_LINE - RECT_WIDTH, MAIN_LINE - RECT_WIDTH, MAIN_LINE],
-#                 y=[y-2*q_y_offset, y-2*q_y_offset, y+2*q_y_offset, y+2*q_y_offset],
-#                 mode='lines',
-#                 line=dict(color='red', width=1, dash='dot'),
-#                 showlegend=False
-#             ), row=1, col=1)
-        
-#     fig.add_trace(go.Scatter(
-#         x=[MAIN_LINE + x_offset] * len(layers),
-#         y=[el + y_offset for el in layers],
-#         mode='markers+text',
-#         marker=dict(size=12, color=color, symbol=symbol, line=dict(color="black", width=1) if head.endswith('cross') else None),
-#         showlegend=False,
-#         name=get_name(head, shorten=shorten_legend),
-#         text=[head.split("cross")[0]] * len(layers),
-#     ), row=1, col=1)
-
-
-#     if head.endswith('cross'):
-#         fig.add_trace(go.Scatter(
-#             x=[MAIN_LINE + x_offset] * len(layers),
-#             y=[el + y_offset for el in layers],
-#             mode='markers',
-#             marker=dict(size=12, color="red", symbol="line-ne", line=dict(color="red", width=1)),
-#             showlegend=False,
-#             name="Avg Patch"
-#         ), row=1, col=1)
-
-#     for y in layers:
-#         if not head.endswith('cross'):
-#             fig.add_annotation(
-#                 ax=x_pos + x_offset/2 +0.01, ay=y + y_offset,
-#                 axref="x1", ayref="y1",
-#                 x=MAIN_LINE + x_offset-0.02, y=y + y_offset,
-#                 xref="x1", yref="y1",
-#                 showarrow=True,
-#                 arrowhead=2,
-#                 arrowsize=1,
-#                 arrowwidth=1.5,
-#                 arrowcolor=color
-#             )
-
-# # Heatmaps and annotations
-# def add_heatmap_annotations(fig, data, std, col, format_fun, y_values):
-
-#     for i in range(data.shape[0]):
-#         for j in range(data.shape[1]):
-#             fig.add_annotation(
-#                 x=j,
-#                 y=y_values[i],
-#                 text=str(format_fun(data[i, j].item())) + (f' <span style="font-size:10px; ">(σ={format_fun(std[i, j].item())})</span>' if std is not None else ""),
-#                 showarrow=False,
-#                 font=dict(color="black", size=14),
-#                 xref=f"x{col}", yref=f"y{col}"
-#             )
-
-# def create_patch_scope_plot(probs, ranks, a_layers, b_layers, avg_layers, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True):
-#     # Create subplots for the flow chart and two heatmaps
-
-#     probs, std_devs_probs, probs_median = probs
-#     ranks, std_devs_ranks, ranks_median = ranks
-
-#     if aggregation == "median":
-#         probs = probs_median
-#         ranks = ranks_median
-        
-#     num_rows = probs.shape[1]
-    
-#     num_sp = 3 if add_rank and add_prob else 2
-
-#     sp_titles = ["Patching Flow"]
-#     sp_specs = [[{'type': 'scatter'}]]
-#     if add_prob:
-#         sp_titles.append("Answer Likelihood")
-#         sp_specs[0].append({'type': 'heatmap'})
-#     if add_rank:
-#         sp_titles.append("Answer Rank")
-#         sp_specs[0].append({'type': 'heatmap'})
-#     col_widths = [0.25 if num_rows == 3 else 0.2]
-#     if add_prob:
-#         col_widths.append(0.4)
-#     if add_rank:
-#         col_widths.append(0.4)
-#     fig = sp.make_subplots(
-#         rows=1, cols=num_sp,
-#         shared_yaxes=False, horizontal_spacing=0.08,
-#         specs=sp_specs, 
-#         column_widths=col_widths,
-#         subplot_titles=sp_titles
-#     )
-
-#     # add hidden scatters for legend
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="square", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         name=get_name("m", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="circle", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         name=get_name("q", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="diamond", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         name=get_name("o", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#             marker=dict(size=14, color="red", symbol="line-ne", line=dict(color="red", width=1)),
-#         showlegend=True,
-#         name="Avg Patch",
-#     ), row=1, col=1)
-
-#     # Add an annotation to mimic the text in the legend
-#     if num_sp == 3 and num_rows == 3:
-#         shift = 0
-#         y_shift = 0.001
-#     else:
-#         shift = 0.007
-#         y_shift = 0.0
-#     if num_rows == 2:
-#         y_shift = 0.01
-#         shift = 0.02
-#     fig.add_annotation(
-#         x=0.022+shift, y=0.176+3.7*y_shift,  # Coordinates for the annotation in normalized coordinates
-#         xref="paper", yref="paper",
-#         text="m",  # Text you want to display
-#         showarrow=False,
-#         font=dict(size=12, color="black"),
-#         align="left"
-#     )
-#     fig.add_annotation(
-#         x=0.0268+shift, y=0.148+2.8*y_shift,  # Coordinates for the annotation in normalized coordinates
-#         xref="paper", yref="paper",
-#         text="q",  # Text you want to display
-#         showarrow=False,
-#         font=dict(size=12, color="black"),
-#         align="left"
-#     )
-#     fig.add_annotation(
-#         x=0.0268+shift, y=0.116+y_shift,  # Coordinates for the annotation in normalized coordinates
-#         xref="paper", yref="paper",
-#         text="o",  # Text you want to display
-#         showarrow=False,
-#         font=dict(size=12, color="black"),
-#         align="left"
-#     )
-
-
-#     # Flow chart for PRIOR
-#     flow_chart_prior = go.Scatter(
-#         x=[MAIN_LINE, MAIN_LINE],
-#         y=[0, N_LAYERS - 1],
-#         mode='lines',
-#         line=dict(color='red', width=2, dash='dot'),
-#         showlegend=True,
-#         name="Residual"
-#     )
-#     fig.add_trace(flow_chart_prior, row=1, col=1)
-
-#     for head in a_layers:
-#         add_flow_chart(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color="lightblue")
-#     for head in b_layers:
-#         add_flow_chart(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color="lightgreen")
-#     for head in avg_layers:
-#         add_flow_chart(fig, MAIN_LINE, avg_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head+'cross', color="white")
-
-    
-#     if num_rows == 2:
-#         axs_titles = [a_title, c_title]
-#         axs_vals_flow = [PATCH_ALT, MAIN_LINE]
-#         axs_vals_data = [0, 1]
-#     else:
-#         axs_titles = [a_title, b_title, c_title]
-#         axs_vals_flow = [PATCH_ALT, PATCH_MAIN, MAIN_LINE]
-#         axs_vals_data = [0, 1, 2]
-#     if add_prob:
-#         # Probability heatmap
-#         heatmap_probs = go.Heatmap(
-#             z=probs,
-#             x=axs_titles,
-#             y=list(range(N_LAYERS)),
-#             colorscale='RdBu_r',
-#             zmin=-0.2,
-#             zmax=1.2,
-#             showscale=False,
-#         )
-#         fig.add_trace(heatmap_probs, row=1, col=2)
-#         add_heatmap_annotations(fig, probs, std_devs_probs, 2, lambda x: round(x, 3), list(range(N_LAYERS)))
-
-#     if add_rank:
-#         rank_col = 3 if num_sp == 3 else 2
-#         # Rank heatmap
-#         heatmap_ranks = go.Heatmap(
-#             z=ranks,
-#             x=axs_titles,
-#             y=list(range(N_LAYERS)),
-#             colorscale='Aggrnyl_r',
-#             zmin=0,
-#             zmax=500,
-#             showscale=False,
-#         )
-#         fig.add_trace(heatmap_ranks, row=1, col=rank_col)
-#         add_heatmap_annotations(fig, ranks, std_devs_ranks, rank_col, lambda x: int(x), list(range(N_LAYERS)))
-
-#     # Adjust layout for the inverted y-axis
-#     fig.update_yaxes(
-#         tickvals=list(range(N_LAYERS)),
-#         ticktext=list(range(N_LAYERS)),  # Ensure tick labels match the inverted y-axis
-#         showgrid=True,
-#         ticks="outside",
-#         ticklen=6,
-#         minor_ticks="outside",
-#         tickwidth=1
-#     )
-    
-#     fig.update_yaxes(
-#         title_text="Layer Number",
-#         row = 1, col = 1,
-#     )
-
-#     fig.update_xaxes(
-#         title_text="Patching Sources",
-#         tickvals=axs_vals_flow,
-#         ticktext=axs_titles,
-#         range=[0.2, 0.8],
-#         showline=True,
-#         linewidth=1,
-#         linecolor='black',
-#         ticks="outside",
-#         ticklen=6,
-#         row=1, col=1
-#     )
-
-#     fig.update_xaxes(
-#         title_text="Answer Token",
-#         tickvals=axs_vals_data,
-#         ticktext=axs_titles,
-#         showgrid=True,
-#         ticks="outside",
-#         ticklen=6,
-#         minor_ticks="outside",
-#         tickwidth=1,
-#         row=1, col=2
-#     )
-#     if num_sp == 3:
-#         fig.update_xaxes(
-#             title_text="Answer Token",
-#             tickvals=axs_vals_data,
-#             ticktext=axs_titles,
-#             showgrid=True,
-#             ticks="outside",
-#             ticklen=6,
-#             minor_ticks="outside",
-#             tickwidth=1,
-#             row=1, col=3
-#     )
-
-#     if num_sp == 2:
-#         width= 800
-#     elif num_sp == 3:
-#         width = 1200
-    
-#     if num_rows == 2:
-#         width-=300
-        
-#     # Add borders around the subplots
-#     margin_top = 40 if title is None else 100
-#     fig.update_layout(
-#         height=800,
-#         width=width,
-#         title_text=title,
-#         margin=dict(l=40, r=40, t=margin_top, b=40),
-#         plot_bgcolor='rgba(0,0,0,0)',
-#         xaxis2=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         yaxis2=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         xaxis3=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         yaxis3=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#     )
-
-#     fig.update_yaxes(range=[0, N_LAYERS - 1], row=1, col=1)
-
-#     # Define padding for the subplot 1
-#     padding = 0.5
-#     fig.update_layout(
-#         yaxis1=dict(range=[0-padding, N_LAYERS-1+padding]),
-#         legend=dict(
-#             x=0.01,  
-#             y=0.05,  # Position the legend above the plot
-#             orientation="v",  # Horizontal orientation
-#             xanchor="left",  # Align the legend center with the x position
-#             yanchor="bottom",  # Align the bottom of the legend with the y position,
-#             # border
-#             bordercolor="black",  # Color of the border
-#             borderwidth=1,  # Width of the border
-#             bgcolor="white"  # Background color of the legend
-#         ),
-#     )
-#     return fig
-
-
-# def create_patch_scope_lplot(probs, aggregation, ranks, a_layers, b_layers, avg_layers, a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True):
-#     # Create subplots for the flow chart and two heatmaps
-
-#     probs, std_devs, probs_median = probs
-#     ranks, std_devs_ranks, ranks_median = ranks
-    
-#     num_rows = probs.shape[1]
-    
-#     num_sp = 3 if add_rank and add_prob else 2
-#     sp_titles = ["Patching Flow"]
-#     sp_specs = [[{'type': 'scatter'}]]
-#     if add_prob:
-#         sp_titles.append("Answer Likelihood")
-#         sp_specs[0].append({'type': 'heatmap'})
-#     if add_rank:
-#         sp_titles.append("Answer Rank")
-#         sp_specs[0].append({'type': 'heatmap'})
-#     col_widths = [0.25 if num_rows == 3 else 0.2]
-#     if add_prob:
-#         col_widths.append(0.4)
-#     if add_rank:
-#         col_widths.append(0.4)
-#     fig = sp.make_subplots(
-#         rows=1, cols=num_sp,
-#         shared_yaxes=False, horizontal_spacing=0.18,
-#         specs=sp_specs, 
-#         column_widths=col_widths,
-#         subplot_titles=sp_titles
-#     )
-
-#     # add hidden scatters for legend
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="square", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         legend="legend2",
-#         name=get_name("m", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="circle", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         legend="legend2",
-
-#         name=get_name("q", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#         marker=dict(size=14, color="white", symbol="diamond", line=dict(color="black", width=1)),
-#         showlegend=True,
-#         legend="legend2",
-
-#         name=get_name("o", shorten=num_rows == 2),
-#     ), row=1, col=1)
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='markers',
-#             marker=dict(size=14, color="red", symbol="line-ne", line=dict(color="red", width=1)),
-#         showlegend=True,
-#         legend="legend2",
-
-#         name="Avg Patch",
-#     ), row=1, col=1)
-    
-    
-
-
-#     # Add an annotation to mimic the text in the legend
-#     if num_sp == 3 and num_rows == 3:
-#         shift = 0
-#         y_shift = 0
-#     else:
-#         shift = 0.007
-#         y_shift = 0.0
-#     if num_rows == 2:
-#         y_shift = 0.01
-#         shift = 0.02
-#     # fig.add_annotation(
-#     #     x=0.022+shift, y=0.176+3.7*y_shift,  # Coordinates for the annotation in normalized coordinates
-#     #     xref="paper", yref="paper",
-#     #     text="m",  # Text you want to display
-#     #     showarrow=False,
-#     #     font=dict(size=12, color="black"),
-#     #     align="center"
-#     # )
-#     # fig.add_annotation(
-#     #     x=0.0268+shift, y=0.148+2.8*y_shift,  # Coordinates for the annotation in normalized coordinates
-#     #     xref="paper", yref="paper",
-#     #     text="q",  # Text you want to display
-#     #     showarrow=False,
-#     #     font=dict(size=12, color="black"),
-#     #     align="left"
-#     # )
-#     # fig.add_annotation(
-#     #     x=0.0268+shift, y=0.116+y_shift,  # Coordinates for the annotation in normalized coordinates
-#     #     xref="paper", yref="paper",
-#     #     text="o",  # Text you want to display
-#     #     showarrow=False,
-#     #     font=dict(size=12, color="black"),
-#     #     align="left"
-#     # )
-
-
-#     # Flow chart for PRIOR
-#     flow_chart_prior = go.Scatter(
-#         x=[MAIN_LINE, MAIN_LINE],
-#         y=[0, N_LAYERS - 1],
-#         mode='lines',
-#         line=dict(color='red', width=2, dash='dot'),
-#         showlegend=True,
-#         name="Residual"
-#     )
-#     fig.add_trace(flow_chart_prior, row=1, col=1)
-
-#     for head in a_layers:
-#         add_flow_chart(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color="lightblue")
-#     for head in b_layers:
-#         add_flow_chart(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color="lightgreen")
-#     for head in avg_layers:
-#         add_flow_chart(fig, MAIN_LINE, avg_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head+'cross', color="white")
-
-    
-#     if num_rows == 2:
-#         axs_titles = [a_title, c_title]
-#         axs_vals_flow = [PATCH_ALT, MAIN_LINE]
-#         axs_vals_data = [0, 1]
-#     else:
-#         axs_titles = [a_title, b_title, c_title]
-#         axs_vals_flow = [PATCH_ALT, PATCH_MAIN, MAIN_LINE]
-#         axs_vals_data = [0, 1, 2]
-#     if add_prob:        
-#         # Creating shaded areas for each line
-#         upper = probs + std_devs
-#         # bound to 1
-#         upper[upper > 1] = 1
-        
-#         lower = probs - std_devs
-#         # bound to 0
-#         lower[lower < 0] = 0
-#         line1_upper = go.Scatter(
-#             x=upper[:, 0],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=0),
-#             fill=None,
-#             showlegend=False,
-#         )
-
-#         line1_lower = go.Scatter(
-#             x=lower[:, 0],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=0),
-#             fill='tonextx',
-#             fillcolor='rgba(0,100,80,0.2)',
-#             showlegend=False
-#         )
-
-#         line1 = go.Scatter(
-#             x=probs[:, 0],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             name=axs_titles[0],
-#             legend='legend2',
-
-#             # color
-#             line=dict(color='rgba(0,100,80,1.0)')
-#         )
-
-#         # median (dotted)
-#         median1 = go.Scatter(
-#             x=probs_median[:, 0],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=1, dash='dot', color = 'rgba(0,100,80,1.0)'),
-#             name='Median',
-#             showlegend=False,
-            
-#         )
-
-#         line2_upper = go.Scatter(
-#             x=upper[:, 1],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=0),
-#             fill=None,
-#             showlegend=False
-#         )
-
-#         line2_lower = go.Scatter(
-#             x=lower[:, 1],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=0),
-#             fill='tonextx',
-#             fillcolor='rgba(100,0,80,0.2)',
-#             showlegend=False
-#         )
-
-#         line2 = go.Scatter(
-#             x=probs[:, 1],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             name=axs_titles[1],
-#             legend='legend2',
-#             # color
-#             line=dict(color='rgba(100,0,80,1.0)')
-            
-#         )
-        
-#         median2 = go.Scatter(
-#             x=probs_median[:, 1],
-#             y=list(range(N_LAYERS)),
-#             mode='lines',
-#             line=dict(width=1, dash='dot', color = 'rgba(100,0,80,1.0)'),
-#             name='Median',
-#             showlegend=False,
-#         )
-        
-
-#         fig.add_trace(line1_upper, row=1, col=2)
-#         fig.add_trace(line1_lower, row=1, col=2)
-#         fig.add_trace(line1, row=1, col=2)
-#         fig.add_trace(median1, row=1, col=2)
-#         fig.add_trace(line2_upper, row=1, col=2)
-#         fig.add_trace(line2_lower, row=1, col=2)
-#         fig.add_trace(line2, row=1, col=2)
-#         fig.add_trace(median2, row=1, col=2)
-        
-#         if num_rows == 3:
-#             upper = probs + std_devs
-#             # bound to 1
-#             upper[upper > 1] = 1
-
-#             lower = probs - std_devs
-#             # bound to 0
-#             lower[lower < 0] = 0
-#             line3_upper = go.Scatter(
-#                 x=upper[:, 2],
-#                 y=list(range(N_LAYERS)),
-#                 mode='lines',
-#                 line=dict(width=0),
-#                 fill=None,
-#                 showlegend=False,
-#             )
-
-#             line3_lower = go.Scatter(
-#                 x=lower[:, 2],
-#                 y=list(range(N_LAYERS)),
-#                 mode='lines',
-#                 line=dict(width=0),
-#                 fill='tonextx',
-#                 fillcolor='rgba(0,100,80,0.2)',
-#                 showlegend=False
-#             )
-
-#             line3 = go.Scatter(
-#                 x=probs[:, 2],
-#                 y=list(range(N_LAYERS)),
-#                 mode='lines',
-#                 name=axs_titles[2],
-#                 legend='legend2',
-#                 # color
-#                 line=dict(color='rgba(0,0,0,1.0)')
-#             )
-
-#             # median (dotted)
-#             median3 = go.Scatter(
-#                 x=probs_median[:, 2],
-#                 y=list(range(N_LAYERS)),
-#                 mode='lines',
-#                 line=dict(width=1, dash='dot', color = 'rgba(0,0,0,1.0)'),
-#                 name='Median',
-#                 showlegend=False,
-
-#             )
-
-#             fig.add_trace(line3_upper, row=1, col=2)
-#             fig.add_trace(line3_lower, row=1, col=2)
-#             fig.add_trace(line3, row=1, col=2)
-#             fig.add_trace(median3, row=1, col=2)
-            
-#     # legend entries for median and mean
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='lines',
-#         showlegend=True,
-#         legend='legend2',
-#         line=dict(width=1,color = 'black'),
-#         name="Mean",
-#     ), row=1, col=2)
-
-#     fig.add_trace(go.Scatter(
-#         x=[None] ,
-#         y=[None],
-#         mode='lines',
-#         showlegend=True,
-#         legend='legend2',
-#         line=dict(width=1, dash='dot', color = 'black'),
-#         name="Median",
-#     ), row=1, col=2)
-
-#     if add_rank:
-#         # Rank heatmap
-#         heatmap_ranks = go.Heatmap(
-#             z=ranks[0],
-#             x=axs_titles,
-#             y=list(range(N_LAYERS)),
-#             colorscale='Aggrnyl_r',
-#             zmin=0,
-#             zmax=500,
-#             showscale=False,
-#         )
-#         fig.add_trace(heatmap_ranks, row=1, col=3)
-#         add_heatmap_annotations(fig, ranks, 3, lambda x: int(x), list(range(N_LAYERS)))
-
-#     # Adjust layout for the inverted y-axis
-#     fig.update_yaxes(
-#         tickvals=list(range(N_LAYERS)),
-#         ticktext=list(range(N_LAYERS)),  # Ensure tick labels match the inverted y-axis
-#         showgrid=True,
-#         ticks="outside",
-#         ticklen=6,
-#         minor_ticks="outside",
-#         tickwidth=1
-#     )
-    
-#     fig.update_yaxes(
-#         title_text="Layer Number",
-#         row = 1, col = 1,
-#     )
-
-#     fig.update_xaxes(
-#         title_text="Patching Sources",
-#         tickvals=axs_vals_flow,
-#         ticktext=axs_titles,
-#         range=[0.2, 0.8],
-#         showline=True,
-#         linewidth=1,
-#         linecolor='black',
-#         ticks="outside",
-#         ticklen=6,
-#         row=1, col=1
-#     )
-
-#     fig.update_xaxes(
-#         title_text="Likelihood",
-#         showgrid=True,
-#         ticks="outside",
-#         ticklen=6,
-#         minor_ticks="outside",
-#         tickwidth=1,
-#         row=1, col=2
-#     )
-#     if num_sp == 3:
-#         fig.update_xaxes(
-#             title_text="Answer Token",
-#             tickvals=axs_vals_data,
-#             ticktext=axs_titles,
-#             showgrid=True,
-#             ticks="outside",
-#             ticklen=6,
-#             minor_ticks="outside",
-#             tickwidth=1,
-#             row=1, col=3
-#     )
-
-#     if num_sp == 2:
-#         width= 800
-#     elif num_sp == 3:
-#         width = 1200
-    
-#     if num_rows == 2:
-#         width-=300
-        
-#     # Add borders around the subplots
-#     margin_top = 40 if title is None else 100
-#     fig.update_layout(
-#         height=800,
-#         width=width,
-#         title_text=title,
-#         margin=dict(l=40, r=40, t=margin_top, b=40),
-#         plot_bgcolor='rgba(0,0,0,0)',
-#         xaxis2=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         yaxis2=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         xaxis3=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#         yaxis3=dict(showline=True, linewidth=1, linecolor='black', mirror=True),
-#     )
-
-#     fig.update_yaxes(range=[0, N_LAYERS - 1], row=1, col=1)
-#     fig.update_yaxes(range=[0, N_LAYERS - 1], row=1, col=2)
-
-#     # Define padding for the subplot 1
-#     padding = 0.5
-#     fig.update_layout(
-#         yaxis1=dict(range=[0-padding, N_LAYERS-1+padding]),
-#         legend1=dict(
-#             x=0.01,  
-#             y=0.05,  # Position the legend above the plot
-#             orientation="v",  # Horizontal orientation
-#             xanchor="left",  # Align the legend center with the x position
-#             yanchor="bottom",  # Align the bottom of the legend with the y position,
-#             # border
-#             bordercolor="black",  # Color of the border
-#             borderwidth=1,  # Width of the border
-#             bgcolor="white"  # Background color of the legend
-#         ),
-#         legend2=dict(
-#             x=0.51,  
-#             y=0.05,  # Position the legend above the plot
-#             orientation="v",  # Horizontal orientation
-#             xanchor="left",  # Align the legend center with the x position
-#             yanchor="bottom",  # Align the bottom of the legend with the y position,
-#             # border
-#             bordercolor="black",  # Color of the border
-#             borderwidth=1,  # Width of the border
-#             bgcolor="white"  # Background color of the legend
-#         ),
-#     )
-#     return fig
-
-
 
 def get_name(head, shorten=False):
     """Returns a formatted name based on the head type."""
     if head.startswith('q'):
         return f'Attn Query{"<br>" if shorten else " "}(all heads)'
     elif head.startswith('o'):
-        return f'Attn Output{"<br>" if shorten else " "}(all heads)'
+        return f"$\\text{{MHA act. }}a^l_n $"
     elif head.startswith('m'):
         return 'MLP'
     else:
@@ -1206,7 +417,7 @@ def get_flow_chart_params(head, q_y_offset, q_x_offset):
     if head.startswith('q'):
         return 'circle', -RECT_WIDTH, -2 * q_y_offset, head
     elif head.startswith('o'):
-        return 'diamond', -0.5 * RECT_WIDTH, 2 * q_y_offset, head
+        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "$a_n$"
     elif head.startswith('mlp'):
         head = head.replace('mlp', 'm')
         return 'square', 2 * q_x_offset, 3.5 * q_y_offset, head
@@ -1232,7 +443,7 @@ def add_marker_trace(fig, x_pos, y_vals, head, color, symbol, legend=False, shor
         y=y_vals,
         mode='markers+text',
         text=[head.split("cross")[0]] * len(y_vals),
-        marker=dict(size=12, color=color, symbol=symbol, line=dict(color="black", width=1) if head.endswith('cross') else None),
+        marker=dict(size=13, color=color, symbol=symbol, line=dict(color="black", width=1) if head.endswith('cross') else None),
         showlegend=legend,
         name=get_name(head, shorten=shorten)
     ), row=1, col=1)
@@ -1304,7 +515,7 @@ def create_patch_scope_plot(probs, ranks, a_layers, b_layers, avg_layers, aggreg
         shared_yaxes=False, horizontal_spacing=0.08,
         specs=[[{'type': 'scatter'}] + [{'type': 'heatmap'}] * (num_sp - 1)],
         column_widths=col_widths,
-        subplot_titles=["<b>Patching Flow</b>"] + (["<b>Answer Likelihood</b>"] if add_prob else []) + (["Answer Rank"] if add_rank else []),
+        subplot_titles=["<b>Patching Flow</b>"] + (["<b>Answer Likelihood</b>"] if add_prob else []) + (["<b>Answer Rank</b>"] if add_rank else []),
     )
 
     # Add legend for flow chart symbols
@@ -1403,12 +614,12 @@ def create_patch_scope_plot(probs, ranks, a_layers, b_layers, avg_layers, aggreg
 def get_flow_chart_params_l(head, q_y_offset, q_x_offset):
     """Returns the symbol, x_offset, and y_offset based on the head type."""
     if head.startswith('q'):
-        return 'circle', -RECT_WIDTH, -2 * q_y_offset
+        return 'circle', -RECT_WIDTH, -2 * q_y_offset, head
     elif head.startswith('o'):
-        return 'diamond', -0.5 * RECT_WIDTH, 2 * q_y_offset
+        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "$a$"
     elif head.startswith('mlp'):
         head = head.replace('mlp', 'm')
-        return 'square', 2 * q_x_offset, 3.5 * q_y_offset
+        return 'square', 2 * q_x_offset, 3.5 * q_y_offset, head
     else:
         raise ValueError("Invalid head type. Choose 'q', 'o' or 'mlp'.")
 
@@ -1429,24 +640,41 @@ def add_marker_trace_l(fig, x_vals, y_pos, head, color, symbol, legend=False, sh
     fig.add_trace(go.Scatter(
         x=x_vals,
         y=[y_pos] * len(x_vals),
-        mode='markers+text',
+        mode='markers',
         text=[head.split("cross")[0]] * len(x_vals),
-        marker=dict(size=12, color=color, symbol=symbol, line=dict(color="black", width=1) if head.endswith('cross') else None),
+        marker=dict(size=18, color=color, symbol=symbol, line=dict(color="black", width=1) if head.endswith('cross') else None),
         showlegend=legend,
+        textposition='middle center',
+        textfont=dict(
+            color="black",
+        ),
         name=get_name(head, shorten=False)
     ), row=1, col=1)
+    
+    for xv in x_vals:
+        #add annotation
+        fig.add_annotation(
+            x=xv,
+            y=y_pos+0.01,
+            xref="x1", yref="y1",
+            text=head.split("cross")[0],
+            showarrow=False,
+            font=dict(size=14, color="white"),
+
+        )
+
 
 def add_flow_chart_l(fig, y_pos, layers, color, residual_color, q_y_offset=0, q_x_offset=0, head='q', shorten_legend=False):
     """Adds a flow chart to the figure."""
-    symbol, x_offset, y_offset, head = get_flow_chart_params(head, q_y_offset, q_x_offset)
+    symbol, x_offset, y_offset, head = get_flow_chart_params_l(head, q_y_offset, q_x_offset)
 
     if not head.endswith('cross'):
-        add_marker_trace_l(fig, [el + y_offset for el in layers], y_pos + x_offset/2, head, color, symbol)
+        add_marker_trace_l(fig, [el for el in layers], y_pos + x_offset/2 + 0.01, head, color, symbol)
     
     for x in layers:
         add_rectangle_l(fig, head, x, q_y_offset, residual_color)
         
-    add_marker_trace_l(fig, [el + y_offset for el in layers], MAIN_LINE + x_offset, head, color, symbol)
+    add_marker_trace_l(fig, [el for el in layers], MAIN_LINE + x_offset, head, color, symbol)
 
     if head.endswith('cross'):
         fig.add_trace(go.Scatter(
@@ -1461,9 +689,9 @@ def add_flow_chart_l(fig, y_pos, layers, color, residual_color, q_y_offset=0, q_
     for x in layers:
         if not head.endswith('cross'):
             fig.add_annotation(
-                ax=x + y_offset, ay=y_pos + x_offset/2 + 0.01,
+                ax=x , ay=y_pos + x_offset/2 - 0.04,
                 axref="x1", ayref="y1",
-                x=x + y_offset, y=MAIN_LINE + x_offset - 0.02,
+                x=x, y=MAIN_LINE + x_offset - 0.1,
                 xref="x1", yref="y1",
                 showarrow=True,
                 arrowhead=2,
@@ -1472,6 +700,21 @@ def add_flow_chart_l(fig, y_pos, layers, color, residual_color, q_y_offset=0, q_
                 arrowcolor=color
             )
             
+    
+
+def get_colors(a_name, b_name):
+    a_name = a_name.lower()
+    b_name = b_name.lower()
+    if "ctx" in a_name and "ctx" in b_name:
+        return COLORS.get_shade(3, 400), COLORS.get_shade(2, 500)
+    elif "prior" in a_name and "prior" in b_name:
+        return COLORS.get_shade(1, 500), COLORS.get_shade(0, 500)
+    elif "prior" in a_name and "ctx" in b_name:
+        return COLORS.get_shade(1, 500), COLORS.get_shade(3, 400)
+    elif "ctx" in a_name and "prior" in b_name:
+        return COLORS.get_shade(3, 400), COLORS.get_shade(1, 500)
+    
+
 def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True):
     """Creates a patch scope plot with flow charts and line plots."""
     probs, std_devs_probs, probs_median = probs
@@ -1479,13 +722,16 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
 
     num_sp = 3 if add_rank and add_prob else 2
     num_rows = probs.shape[1]
-    colors = ['rgba(31, 119, 180, {})', 'rgba(255, 127, 14, {})','rgba(44, 160, 44, {})']
+    # colors = ['rgba(31, 119, 180, {})', 'rgba(255, 127, 14, {})','rgba(44, 160, 44, {})']
+
+    colors = [f"rgba({','.join(str(el) for el in to_rgb(c))}, {{}})" for c in get_colors(a_title, c_title)]
 
     fig = sp.make_subplots(
         rows=num_sp, cols=1,  # Adjusted to have rows instead of columns
-        shared_xaxes=True, vertical_spacing=0.15,
+        shared_xaxes=True, vertical_spacing=0.30,
         specs=[[{'type': 'scatter'}]] + [[{'type': 'scatter'}] for _ in range(num_sp-1)],
-        row_heights=[0.4, 0.6] 
+        row_heights=[0.4, 0.6],
+        subplot_titles=["<b>Patching Flow</b>"] + (["<b>Answer Probability</b>"] if add_prob else []) + (["Answer Rank"] if add_rank else []),
     )
 
     # Add flow chart  
@@ -1496,13 +742,13 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         line=dict(color=colors[num_rows-1].format(1.0), width=2, dash='dot'),
         showlegend=True,
         legend="legend1",
-        name="Residual"
+        name="$\\text{Residual}$"
     ), row=1, col=1)
 
     for head in a_layers:
-        add_flow_chart_l(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[0].format(0.4), residual_color=colors[1].format(1.0))
+        add_flow_chart_l(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[0].format(1.0), residual_color=colors[-1].format(1.0))
     for head in b_layers:
-        add_flow_chart_l(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[1].format(0.4), residual_color=colors[1].format(1.0))
+        add_flow_chart_l(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[1].format(1.0), residual_color=colors[-1].format(1.0))
     for head in avg_layers:
         add_flow_chart_l(fig, MAIN_LINE, avg_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head+'cross', color="white", residual_color=colors[1].format(1.0))
 
@@ -1513,7 +759,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
     next_row = 2
     
     # Add legend for flow chart symbols
-    for head, symbol, color in zip(['m', 'q', 'o'], ["square", "circle", "diamond"], ["white"] * 3):
+    for head, symbol, color in zip(['m', 'q', 'o'], ["diamond", "circle", "square"], ["white"] * 3):
         if head in a_layers:
             fig.add_trace(go.Scatter(
                 x=[None],
@@ -1534,15 +780,15 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         #     legend="legend1",
         # ), row=1, col=1)
 
-    fig.add_trace(go.Scatter(
-        x=[None],
-        y=[None],
-        mode='markers',
-        marker=dict(size=14, color="red", symbol="line-ne", line=dict(color="red", width=1)),
-        showlegend=True,
-        name="Avg Patch",
-        legend="legend1",
-    ), row=1, col=1)
+    # fig.add_trace(go.Scatter(
+    #     x=[None],
+    #     y=[None],
+    #     mode='markers',
+    #     marker=dict(size=14, color="red", symbol="line-ne", line=dict(color="red", width=1)),
+    #     showlegend=True,
+    #     name="Avg Patch",
+    #     legend="legend1",
+    # ), row=1, col=1)
     
     # Probability line plot
     if add_prob:
@@ -1575,7 +821,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
                 x=list(range(N_LAYERS)),
                 y=probs[:, i],
                 mode='lines',
-                name=axs_titles[i],
+                name=f"$\\text{{{axs_titles[i]}}}$",
                 line=dict(color=colors[i].format(1.0)),
                 legend="legend2",
                 legendgroup="values"
@@ -1594,6 +840,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             fig.add_trace(line_lower, row=next_row, col=1)
             fig.add_trace(line_mean, row=next_row, col=1)
             fig.add_trace(line_median, row=next_row, col=1)
+        
         # legend entries for median and mean
         fig.add_trace(go.Scatter(
             x=[None] ,
@@ -1602,7 +849,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             showlegend=True,
             legend='legend2',
             line=dict(width=1,color = 'black'),
-            name="Mean",
+            name="$\\text{Mean}$",
             legendgroup="meta"
 
         ), row=next_row, col=1)
@@ -1614,7 +861,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             showlegend=True,
             legend='legend2',
             line=dict(width=1, dash='dot', color = 'black'),
-            name="Median",
+            name="$\\text{Median}$",
             legendgroup="meta"
 
         ), row=next_row, col=1)
@@ -1652,7 +899,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
                 x=list(range(N_LAYERS)),
                 y=ranks[:, i],
                 mode='lines',
-                name=axs_titles[i],
+                name=f"${axs_titles[i]}$",
                 line=dict(color=colors[i].format(1.0), width=1),
                 legend='legend2',
             )
@@ -1671,6 +918,35 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             fig.add_trace(rank_line_mean, row=next_row, col=1)
             fig.add_trace(rank_line_median, row=next_row, col=1)
 
+        # legend entries for median and mean
+        fig.add_trace(go.Scatter(
+            x=[None] ,
+            y=[None],
+            mode='lines',
+            showlegend=True,
+            legend='legend2',
+            line=dict(width=1,color = 'black'),
+            name="$\\text{Mean}$",
+            legendgroup="meta"
+
+        ), row=next_row, col=1)
+
+        fig.add_trace(go.Scatter(
+            x=[None] ,
+            y=[None],
+            mode='lines',
+            showlegend=True,
+            legend='legend2',
+            line=dict(width=1, dash='dot', color = 'black'),
+            name="$\\text{Median}$",
+            legendgroup="meta"
+
+        ), row=next_row, col=1)
+        
+
+        # adjust y-axis range
+        fig.update_yaxes(range=[0, 500], row=2, col=1)
+
     # Adjust layout for the inverted y-axis and other settings
     fig.update_yaxes(
         tickvals=axs_vals_flow,
@@ -1685,12 +961,11 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         ticks="outside",
         ticklen=6,
         row=1, col=1,
-        tickangle=-90,  # Optional: rotate the labels
-        title="Patching Flow"
+        tickangle=-45,  # Optional: rotate the labels
     )
 
     if add_prob:
-        fig.update_yaxes(range=[0, 1],row=2, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1, ticks="outside", title="Answer Likelihood")
+        fig.update_yaxes(range=[0, 1],row=2, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1, ticks="outside")
     if add_rank:
         fig.update_yaxes(range=[0, 500], title_text="Rank", row=3, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1)
 
@@ -1698,22 +973,22 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         tickmode='array',
         tickvals=list(range(N_LAYERS)),
         ticktext=[str(i) for i in range(N_LAYERS)],
-        showgrid=True,
+        showgrid=True,tickfont=dict(size=16),
         ticks="outside",
         ticklen=6,
         minor_ticks="outside",
         tickwidth=1,
         showticklabels=True,
         range=[0, N_LAYERS - 0.5],
-        title_text="Layer Number", 
     )    
+    
     fig.update_xaxes(
-        title_text=None,  # Remove the x-axis label for subplot 1
-        row=1, col=1
+        title=dict(text= "Layer Number", font=dict(size=16)), 
+        row=2, col=1,
     )
     
     # Adjust layout dimensions and margins
-    height = 330 + (num_sp - 2) * 100
+    height = 360 + (num_sp - 2) * 100
     fig.update_layout(height=height, width=800, title_text=title, margin=dict(l=40, r=40, t=100 if title else 40, b=0), plot_bgcolor='rgba(0,0,0,0)')
 
     # Legends
@@ -1727,18 +1002,222 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             # border
             bordercolor="black",  # Color of the border
             borderwidth=1,  # Width of the border
-            bgcolor="white"  # Background color of the legend
-        ),
+            bgcolor="rgba(255,255,255,0.9)"),
         legend2=dict(
             x=0.02,  
-            y=0.5,  # Position the legend above the plot
-            orientation="v",  # Horizontal orientation
+            y=0.36,  # Position the legend above the plot
+            orientation="h",  # Horizontal orientation
             xanchor="left",  # Align the legend center with the x position
             yanchor="top",  # Align the bottom of the legend with the y position,
             # border
             bordercolor="black",  # Color of the border
             borderwidth=1,  # Width of the border
-            bgcolor="white"  # Background color of the legend
+            bgcolor="rgba(255,255,255,0.9)"  # Background color of the legend
         ),
     )
+
+    # increase font size
+    fig.update_layout(font=dict(size=20))
+    return fig
+
+def jupyter_enable_mathjax():
+    import plotly
+    from IPython.display import display, HTML
+
+    plotly.offline.init_notebook_mode()
+    display(HTML(
+        '<script type="text/javascript" async src="https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.1/MathJax.js?config=TeX-MML-AM_SVG"></script>'
+    ))
+
+
+def get_label_color(label, COLORS):
+    if 'FT' in label:
+        return COLORS.get_shade(0, 700)
+    elif 'FS' in label or 'ICL' in label:
+        return COLORS.get_shade(9, 600)
+    elif "ZS" in label:
+        return COLORS.get_shade(6, 600)
+    else:
+        return 'black'  # Default color
+        
+def format_label(label):
+    label = label.replace("FLOAT", ' 1️⃣')
+    label = label.replace("INSTRUCTION", ' 🫵')
+    label = label.replace("FS", "ICL")
+    words = label.replace("-", " ").split()
+    colored_label = ''.join([f'<span style="color:{get_label_color(word, COLORS)};">{"<b>" if word in ["ICL", "FT", "ZS"] else ""} {word} </span>' for word in words])
+    return colored_label
+
+def to_standart_label(label):
+    label = label.replace("_", " ").replace("cwf", "").replace("instruction", "INSTRUCTION").replace("float", "FLOAT").replace("zs", "ZS").replace("fs", "FS").replace("ft", "FT")
+    label = label.replace("base", "BASE").replace("instruct", "INSTRUCT")
+    return label
+
+
+column_map = {
+    "baseline": "Baseline: No Steering with Intent Instruction",
+    "with_instruction": "Steering: Same Instruction",
+    "against_instruction": "Steering: Opposite Instruction",
+    "one_word": "Steering: Only One Word Instruction",
+    "one_word_instruction": "Steering: One Word Instruction and Same Instruction",
+    "no_instruction": "Steering: No Intent Instruction"
+}
+metric_map = {
+    "accuracy": "Accuracy",
+    "paired_accuracy": "PairAcc"
+}
+
+
+ORDER = ["instruct_ft_instruction", "instruct_ft_float", "base_ft_instruction", "base_ft_float", "instruct_fs_instruction", "instruct_fs_float", "base_fs_instruction", "base_fs_float", "instruct_zs_instruction", "instruct_zs_float", "base_zs_instruction", "base_zs_float"]
+def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baseline_for_zs=False, COLORS=TailwindColorPalette()):
+    if use_one_word_baseline_for_zs:
+        for key in data.keys():
+            if "zs" in key:
+                data[key]["baseline"] = data[key]["baseline_one_word_instruction"]
+                data[key]["no_instruction"] = data[key]["one_word"]
+    if columns is None:
+        columns = ['baseline', 'with_instruction', 'against_instruction', 'one_word', 'one_word_instruction', 'no_instruction']
+    
+    fig = go.Figure()
+    
+    # order rows
+    _data = {key: data[key] for key in ORDER if key in data}
+
+    colors_no_instruction = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
+    colors_one_word = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
+    colors_against = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
+    colors_baseline = n_colors(to_rgb(COLORS.get_shade(4, 300)), to_rgb(COLORS.get_shade(4, 400)), len(_data))
+    # Define colors for each column
+    colors = {
+        'baseline': [f"rgb({','.join(map(str, c))})" for c in colors_baseline],
+        'no_instruction': [f"rgb({','.join(map(str, c))})" for c in colors_no_instruction],
+        'against_instruction': [f"rgb({','.join(map(str, c))})" for c in colors_against],
+        'one_word': [f"rgb({','.join(map(str, c))})" for c in colors_one_word],
+    }
+    for column in columns:
+        y_values = []
+        x_labels = []
+        for key in _data.keys():
+            if column in data[key].columns:
+                value = data[key].loc[data[key]['Unnamed: 0'] == metric, column].values[0]
+                y_values.append(value)
+                x_labels.append(format_label(to_standart_label(key)))
+        
+        print(column, y_values)
+        fig.add_trace(go.Bar(
+            name=column_map[column],
+            x=x_labels,
+            y=y_values,
+            text=[f'{v:.2f}' if v != 0 else '0' for v in y_values],
+            textposition=['auto' if v != 0 else 'outside' for v in y_values],
+            textfont=dict(size=18),
+            marker_color=colors[column]
+        ))
+
+    fig.update_layout(
+        barmode='group',
+        # title=f'Feature F_{{w}} Causality - {metric_map[metric]}',
+        # xaxis_title='Model Configuration',
+        yaxis_title=metric_map[metric],
+        legend_title='Evaluation Setting',
+        font=dict(size=16),
+        xaxis=dict(tickangle=-45),
+        width=2000,
+        height=700
+    )
+
+    fig.update_layout(legend=dict(
+        yanchor="bottom",
+        y=0.05,
+        xanchor="left",
+        x=0.012,
+        orientation="v",
+        borderwidth=4,
+        bordercolor="white"
+    ))
+    # xrange
+    fig.update_yaxes(range=[0.0, 1.0])
+    # font
+    fig.update_layout(font=dict(size=20))
+    
+        
+    #Add custom legend for color codes
+    custom_annotations = [
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=get_label_color("FT", COLORS)
+            ),
+            legendgroup='config',
+            showlegend=True,
+            name=' Finetuning (FT)',
+            legend = 'legend2'
+        ),
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=get_label_color("FS", COLORS)
+            ),
+            legendgroup='config',
+            showlegend=True,
+            name=' In-Context Learning (ICL)',
+            legend = 'legend2'
+
+        ),
+        go.Scatter(
+            x=[None],
+            y=[None],
+            mode='markers',
+            marker=dict(
+                size=10,
+                color=get_label_color("ZS", COLORS)
+            ),
+            legendgroup='config',
+            showlegend=True,
+            name=' Zero-Shot (ZS)',
+            legend = 'legend2'
+        )
+    ]
+
+    # Add the custom legend to the figure
+    for annotation in custom_annotations:
+        fig.add_trace(annotation)
+
+
+    # Add custom legend using annotations
+    legend_annotations = [
+        dict(
+        x=.995,
+        y=0.79,
+        xref="paper",
+        yref="paper",
+        text=f"🫵  IF = instruction<br>1️⃣  IF = float",
+        showarrow=False,
+        font=dict(size=20),
+        align="left",
+        bgcolor="rgba(255, 255, 255, 0.9)",
+        borderpad=10,
+        xanchor="right",
+        height=48,
+        width=292,
+        yanchor="top")
+        
+    ]
+    fig.update_layout(annotations=legend_annotations)
+
+    fig.update_layout(legend2=dict(
+        yanchor="top",
+        y=0.98,
+        xanchor="right",
+        x=0.995, #48
+        orientation="h",
+        bgcolor="rgba(255, 255, 255, 0.9)"
+    ), margin=dict(l=0, r=0, t=0, b=0))
+
     return fig
