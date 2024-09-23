@@ -5,20 +5,23 @@ import pandas as pd
 import os
 
 
-def generate_dataset(num_examples=10000):
+def generate_dataset(num_examples=1000, mod=None, max_depth=3):
     operators = {
         "+": operator.add,
         "-": operator.sub,
         "*": operator.mul,
         # '/': operator.floordiv,  # Using floor division for integer results
-        "**": pow,
+        # "**": pow,
     }
 
     dataset = []
     unique_expressions = set()
 
     def evaluate_expression(expr, operators_dict):
-        return eval(expr, {}, operators_dict) % 10
+        if mod is not None:
+            return eval(expr, {}, operators_dict) % mod
+        else:
+            return eval(expr, {}, operators_dict)
 
     def get_subexpressions(expr):
         subexpressions = [expr]
@@ -45,7 +48,7 @@ def generate_dataset(num_examples=10000):
         return count
 
     while len(dataset) < num_examples:
-        num_ops = random.randint(1, 4)
+        num_ops = random.randint(1, max_depth)
         expression = []
 
         for _ in range(num_ops):
@@ -64,7 +67,7 @@ def generate_dataset(num_examples=10000):
                 problem = f"({problem}) {op} {num2}"
 
         # Add "(mod 10)" to the problem
-        problem_with_mod = f"({problem}) (mod 10)"
+        problem_with_mod = f"({problem}) (mod {mod}) =" if mod is not None else f"{problem} ="
 
         # Check if this expression is unique
         if problem_with_mod in unique_expressions:
@@ -74,6 +77,9 @@ def generate_dataset(num_examples=10000):
 
         try:
             original_answer = evaluate_expression(problem, operators)
+            if original_answer < 0 or original_answer > 9:
+                continue
+
             original_op_count = count_operators(problem)
 
             # Get all possible subexpressions
@@ -89,7 +95,7 @@ def generate_dataset(num_examples=10000):
                 new_value = random.randint(0, 9)
 
             # Create the assignment string without stripping parentheses
-            assignment = f"{subexpr}={new_value}"
+            assignment = f"{subexpr} = {new_value}"
 
             # Replace the subexpression in the problem with the new value
             new_problem = problem.replace(subexpr, str(new_value))
@@ -97,6 +103,8 @@ def generate_dataset(num_examples=10000):
 
             # Evaluate the new problem
             new_answer = evaluate_expression(new_problem, operators)
+            if original_answer < 0 or original_answer > 9:
+                continue
 
             dataset.append(
                 (
@@ -124,7 +132,7 @@ def generate_dataset(num_examples=10000):
 SEED = 0
 random.seed(SEED)
 
-arithmetic_dataset = generate_dataset()
+arithmetic_dataset = generate_dataset(mod=None)
 
 print(arithmetic_dataset.head())
 DATA_DIR = "data/Arithmetic"

@@ -15,7 +15,7 @@ import torch
 import wandb
 
 from transformers import TrainingArguments
-from datasets import load_dataset
+from datasets import Dataset
 from trl import SFTTrainer, DataCollatorForCompletionOnlyLM
 from peft import LoraConfig
 
@@ -35,7 +35,7 @@ from model_utils.utils import (
     sample_few_shot_examples,
 )
 
-from preprocessing.dataset import BaseFakepedia, MultihopFakepedia, ContextQueryDataset, Yago, YagoLlama2
+from preprocessing.dataset import Arithmetic, BaseFakepedia, MultihopFakepedia, ContextQueryDataset, Yago, YagoLlama2
 
 
 load_dotenv()
@@ -95,7 +95,7 @@ def get_args():
         "-CWF",
         "--CONTEXT_WEIGHT_FORMAT",
         type=str,
-        default="float",
+        default="instruction",
         choices=[
             "float",
             "instruction",
@@ -107,6 +107,7 @@ def get_args():
         "--EXTRA_EVALS",
         type=json.loads,
         default=[],
+        # default=[{"dataset_name": "Arithmetic", "k_demonstrations": 0, "context_weight_format": "instruction"}],
         help="Datasets on which to run evals. Expected format: a List of Dicts containing {'dataset_name': str, 'k_demonstrations': int, 'context_weight_format': str}",
     )
     parser.add_argument(
@@ -225,13 +226,13 @@ def main():
 
     # Load prompt template for chosen model
     train_mode = not NO_TRAIN
-    
+
     # Check if local model
     if os.path.exists(MODEL_ID):
         model_id = os.path.basename(MODEL_ID)
     else:
         model_id = MODEL_ID
-    
+
     prompt_template_dict, response_template = MODEL_ID_TO_TEMPLATES_DICT[model_id]
     peft_config = (
         LoraConfig(
@@ -334,7 +335,7 @@ def main():
     if not NO_EVAL:
         # Set padding_side to left for all evals
         tokenizer.padding_side = "left"
-        
+
         # Construct full list of eval configs
         # evals: List[EvalConfig] = [
         #     EvalConfig(
@@ -358,9 +359,9 @@ def main():
             few_shot_examples_sampled_df = sample_few_shot_examples(
                 few_shot_examples_df, k=eval_k_demonstrations, seed=SEED
             )
-
             test_dataset_path = os.path.join(get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "test.csv")
-            test_dataset = load_dataset("csv", data_files={"test": test_dataset_path})["test"]
+            test_dataset = pd.read_csv(test_dataset_path, dtype={"answer": str, "prior_answer": str, "ctx_answer": str})
+            test_dataset = Dataset.from_pandas(test_dataset)
             test_dataset = test_dataset.map(
                 lambda examples: {
                     "text": format_prompts(

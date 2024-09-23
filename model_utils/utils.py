@@ -64,7 +64,7 @@ def load_model_and_tokenizer(
         bnb_config = BitsAndBytesConfig(
             load_in_8bit=True,
         )
-    else: 
+    else:
         bnb_config = None
 
     if peft_config is not None or try_load_as_peft:
@@ -141,8 +141,9 @@ def prepare_peft_model(
     model.print_trainable_parameters()
     return model
 
+
 def merge_save_peft(peft_model, tokenizer, path):
-    """ Merge the peft model and save to path."""
+    """Merge the peft model and save to path."""
 
     merged_model = peft_model.merge_and_unload()
     merged_model.save_pretrained(path)
@@ -165,12 +166,16 @@ def compute_mr(df) -> Tuple[float, float, float]:
     MR = (# prior) / (# prior + # context)
     CR = (# ctx) / (# prior + # context)
     % other answers = (# other) / (# prior + # context + # other)
-
-    Note that MR and CR are not inverses
     """
+    if len(df) == 0:
+        return None, None
     num_prior_answers = df.apply(lambda row: is_response_correct(row["predictions"], row["prior_answer"]), axis=1).sum()
     num_ctx_answers = df.apply(lambda row: is_response_correct(row["predictions"], row["ctx_answer"]), axis=1).sum()
     num_other_answers = len(df) - (num_ctx_answers + num_prior_answers)
+    # import pdb; pdb.set_trace()
+    if num_prior_answers + num_ctx_answers == 0:
+        print("No correct prior or context answers. Returning None")
+        return None, num_other_answers / len(df)
     return num_prior_answers / (num_prior_answers + num_ctx_answers), num_other_answers / len(df)
 
 
@@ -212,7 +217,7 @@ def evaluate_model_queries_only(
     model,
     tokenizer,
     dataset: Dataset,
-    max_new_tokens: int = 30,
+    max_new_tokens: int = 50,
     batch_sz: int = 8,  # "auto",
     device: str = "auto",
 ):
@@ -237,7 +242,7 @@ def evaluate_model_queries_only(
     )  # need to make the labels column
 
     encoded_dataset = queries_only_dataset.map(
-        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt"),
+        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt", add_special_tokens=False),
         batched=True,
         batch_size=batch_sz,
     ).select_columns(["input_ids", "attention_mask", "labels"])
@@ -446,7 +451,7 @@ def construct_paths_and_dataset_kwargs(
     if os.path.exists(MODEL_ID):
         # parse only the model id
         MODEL_ID = os.path.basename(MODEL_ID)
-        
+
     # Construct model id
     model_id = MODEL_ID
     model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
@@ -690,7 +695,9 @@ def construct_query_with_demonstrations(
         context_weight_at_end
     ]
 
-    system = prompt_template_dict["SYSTEM"].format("Answer the following query considering the provided context.")
+    system = prompt_template_dict["SYSTEM"].format(
+        "Answer the following query considering the provided context. Answer with only one word."
+    )
 
     # Construct the demontrations into the string (if they exist)
     rounds = []
@@ -717,7 +724,7 @@ def construct_query_with_demonstrations(
 
 def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
     """Assume that train_df contains 0/1 context weight examples adjacent to each other."""
-    shot_indices = train_df[::2].sample(k//2, random_state=seed).index
+    shot_indices = train_df[::2].sample(k // 2, random_state=seed).index
     shot_indices = [(i, i + 1) for i in shot_indices]
     shot_indices = np.array(shot_indices).flatten()
     shot_sample = train_df.loc[shot_indices]
