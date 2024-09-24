@@ -1,6 +1,6 @@
 #!/bin/bash
 INSTRUCT_MODEL="meta-llama/Meta-Llama-3.1-8B-Instruct"
-BASE_MODEL="unsloth/llama-3-8b-bnb-4bit"
+BASE_MODEL="meta-llama/Meta-Llama-3.1-8B"
 
 ##################################
 # GENERALIZATION ACROSS DATASETS #
