@@ -156,11 +156,11 @@ def merge_save_peft(peft_model, tokenizer, path):
 ##############
 # EVALUATION #
 ##############
-def is_response_correct(response: str, label: str) -> bool:
+def response_startswith_label(response: str, label: str) -> bool:
     return response.startswith(label)
 
 
-def compute_mr(df) -> Tuple[float, float, float]:
+def compute_mr(df, is_response_correct_func=response_startswith_label) -> Tuple[float, float, float]:
     """
     Given a df with columns `predictions`,  `prior_answer`, and `ctx_answer`, return a tuple containing (MR, % of other answers).
     MR = (# prior) / (# prior + # context)
@@ -169,8 +169,12 @@ def compute_mr(df) -> Tuple[float, float, float]:
     """
     if len(df) == 0:
         return None, None
-    num_prior_answers = df.apply(lambda row: is_response_correct(row["predictions"], row["prior_answer"]), axis=1).sum()
-    num_ctx_answers = df.apply(lambda row: is_response_correct(row["predictions"], row["ctx_answer"]), axis=1).sum()
+    num_prior_answers = df.apply(
+        lambda row: is_response_correct_func(row["predictions"], row["prior_answer"]), axis=1
+    ).sum()
+    num_ctx_answers = df.apply(
+        lambda row: is_response_correct_func(row["predictions"], row["ctx_answer"]), axis=1
+    ).sum()
     num_other_answers = len(df) - (num_ctx_answers + num_prior_answers)
     # import pdb; pdb.set_trace()
     if num_prior_answers + num_ctx_answers == 0:
@@ -179,15 +183,15 @@ def compute_mr(df) -> Tuple[float, float, float]:
     return num_prior_answers / (num_prior_answers + num_ctx_answers), num_other_answers / len(df)
 
 
-def compute_metrics(df):
+def compute_metrics(df, is_response_correct_func=response_startswith_label):
     ctx_pref_df = df[df["weight_context"] == 1.0]
     prior_pref_df = df[df["weight_context"] == 0.0]
 
     context_acc = ctx_pref_df["is_correct"].mean()
     prior_acc = prior_pref_df["is_correct"].mean()
 
-    context_mr, context_other = compute_mr(ctx_pref_df)
-    prior_mr, prior_other = compute_mr(prior_pref_df)
+    context_mr, context_other = compute_mr(ctx_pref_df, is_response_correct_func=is_response_correct_func)
+    prior_mr, prior_other = compute_mr(prior_pref_df, is_response_correct_func=is_response_correct_func)
 
     overall_mr, overall_other = compute_mr(df)
 
@@ -220,6 +224,7 @@ def evaluate_model_queries_only(
     max_new_tokens: int = 50,
     batch_sz: int = 8,  # "auto",
     device: str = "auto",
+    is_response_correct_func=response_startswith_label,
 ):
     """
     Given a dataset with columns ["query", "prior_answer"], generate answers and evaluate model accuracy against those labels.
@@ -268,7 +273,7 @@ def evaluate_model_queries_only(
             decoded_responses = tokenizer.batch_decode(responses_only)
             decoded_responses = [r.strip() for r in decoded_responses]
             is_correct = [
-                is_response_correct(response, label) for response, label in zip(decoded_responses, batch["labels"])
+                is_response_correct_func(response, label) for response, label in zip(decoded_responses, batch["labels"])
             ]
 
             num_correct += sum(is_correct)
@@ -302,6 +307,7 @@ def evaluate_model(
     dataset: Dataset,
     max_new_tokens: int = 30,
     batch_sz: int = 8,  # "auto",
+    is_response_correct_func=response_startswith_label,
 ):
     """
     Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
@@ -343,7 +349,7 @@ def evaluate_model(
             decoded_responses = tokenizer.batch_decode(responses_only)
             decoded_responses = [r.strip() for r in decoded_responses]
             is_correct = [
-                is_response_correct(response, label) for response, label in zip(decoded_responses, batch["labels"])
+                is_response_correct_func(response, label) for response, label in zip(decoded_responses, batch["labels"])
             ]
 
             num_correct += sum(is_correct)
