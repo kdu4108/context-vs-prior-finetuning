@@ -2,6 +2,7 @@ import random
 import operator
 import re
 import pandas as pd
+import numpy as np
 import os
 from utils import partition_df
 
@@ -132,6 +133,22 @@ def generate_dataset(num_examples=5000, mod=None, max_depth=3):
 
 
 def preprocess_dataset(df):
+    def interleave_datasets(df1, df2):
+        # Ensure df1 and df2 have the same number of rows
+        min_rows = min(len(df1), len(df2))
+        df1 = df1.iloc[:min_rows]
+        df2 = df2.iloc[:min_rows]
+
+        # Create a temporary key for sorting
+        df1["temp_key"] = np.arange(len(df1)) * 2
+        df2["temp_key"] = np.arange(len(df2)) * 2 + 1
+
+        # Concatenate and sort
+        result = pd.concat([df1, df2]).sort_values("temp_key").reset_index(drop=True)
+
+        # Remove the temporary key
+        return result.drop("temp_key", axis=1)
+
     df_prior = df.copy()
     df_prior["weight_context"] = 0
     df_prior["answer"] = df_prior["prior_answer"]
@@ -140,15 +157,13 @@ def preprocess_dataset(df):
     df_ctx["weight_context"] = 1
     df_ctx["answer"] = df_ctx["ctx_answer"]
 
-    df_all = pd.concat([df_prior, df_ctx], axis=0)
-    df_all.sort_values(["query", "context"])
+    df_all = interleave_datasets(df_prior, df_ctx)
+
     df_all["answer"] = df_all["answer"].apply(str)
     df_all["prior_answer"] = df_all["prior_answer"].apply(str)
     df_all["ctx_answer"] = df_all["ctx_answer"].apply(str)
+
     train_df, val_df, test_df = partition_df(df_all, columns=["query"])
-    train_df = train_df.sort_values(["query", "context"])
-    val_df = val_df.sort_values(["query", "context"])
-    test_df = test_df.sort_values(["query", "context"])
 
     full_dir = os.path.join(ROOT_DATA_DIR, "splits", "base")
     os.makedirs(full_dir, exist_ok=True)
