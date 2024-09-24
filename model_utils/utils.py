@@ -639,6 +639,10 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "meta-llama/Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "meta-llama/Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "meta-llama/Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "meta-llama/Meta-Llama-3-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
@@ -652,6 +656,14 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
+    "mistralai/Mistral-7B-Instruct-v0.3": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
+    "mistralai/Mistral-7B-v0.3": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
@@ -661,6 +673,8 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "google/gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "google/gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
 
 CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
@@ -820,9 +834,10 @@ from typing import NamedTuple
 
 
 def construct_test_results_dir(
-    base_results_dir: str, eval_name: str, k_demonstrations: int, context_weight_format: str
+    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, context_weight_format: str
 ):
     eval_id = eval_name
+    eval_id += f"-sp_{subsplit}"
     eval_id += f"-k{k_demonstrations}"
     eval_id += f"-cwf_{context_weight_format}"
     return os.path.join(base_results_dir, eval_id)
@@ -832,5 +847,6 @@ class EvalConfig(NamedTuple):
     """Config for evaluating a model's ability to follow context vs prior according to a weight flag."""
 
     dataset_name: str
+    subsplit: str
     k_demonstrations: int
     context_weight_format: str
