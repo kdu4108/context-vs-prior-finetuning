@@ -1,3 +1,4 @@
+# python main.py BaseFakepedia -M meta-llama/Meta-Llama-3.1-8B-Instruct -S 3 -TS 2048 -TSS 1000 -P -BS 8 -GA 2 -CWF float -O
 import argparse
 from dotenv import load_dotenv
 import gc
@@ -107,7 +108,14 @@ def get_args():
         "--EXTRA_EVALS",
         type=json.loads,
         # default=[],
-        default=[{"dataset_name": "Arithmetic", "k_demonstrations": 0, "context_weight_format": "instruction"}],
+        default=[
+            {
+                "dataset_name": "Arithmetic",
+                "subsplit": "base",
+                "k_demonstrations": 0,
+                "context_weight_format": "instruction",
+            }
+        ],
         help="Datasets on which to run evals. Expected format: a List of Dicts containing {'dataset_name': str, 'k_demonstrations': int, 'context_weight_format': str}",
     )
     parser.add_argument(
@@ -313,7 +321,8 @@ def main():
                     warmup_steps=5,
                     # max_steps=10,
                     num_train_epochs=1,
-                    save_steps=10,
+                    save_strategy="no",
+                    # save_steps=10,
                     learning_rate=2e-4,
                     fp16=not torch.cuda.is_bf16_supported(),
                     bf16=torch.cuda.is_bf16_supported(),
@@ -351,21 +360,23 @@ def main():
         #     )
         # ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
         evals: List[EvalConfig] = [EvalConfig(**eval) for eval in EXTRA_EVALS]
-        print(evals)
-        for eval_name, eval_k_demonstrations, eval_ctx_weight_format in evals:
+        # print(evals)
+        for eval_name, eval_subsplit, eval_k_demonstrations, eval_ctx_weight_format in evals:
             print(
                 f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples and with context weight format of `{eval_ctx_weight_format}`."
             )
 
             # Collect data for few shot example demonstrations
             few_shot_examples_path = os.path.join(
-                get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "train.csv"
+                get_raw_data_dir(dataset_name=eval_name, subsplit=eval_subsplit), "train.csv"
             )
             few_shot_examples_df = pd.read_csv(few_shot_examples_path)
             few_shot_examples_sampled_df = sample_few_shot_examples(
                 few_shot_examples_df, k=eval_k_demonstrations, seed=SEED
             )
-            test_dataset_path = os.path.join(get_raw_data_dir(dataset_name=eval_name, subsplit=SUBSPLIT), "test.csv")
+            test_dataset_path = os.path.join(
+                get_raw_data_dir(dataset_name=eval_name, subsplit=eval_subsplit), "test.csv"
+            )
             test_dataset = pd.read_csv(test_dataset_path, dtype={"answer": str, "prior_answer": str, "ctx_answer": str})
             test_dataset = Dataset.from_pandas(test_dataset)
             test_dataset = test_dataset.map(
@@ -409,6 +420,7 @@ def main():
             test_results_dir = construct_test_results_dir(
                 results_dir,
                 eval_name=eval_name,
+                subsplit=eval_subsplit,
                 k_demonstrations=eval_k_demonstrations,
                 context_weight_format=eval_ctx_weight_format,
             )
