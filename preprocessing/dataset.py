@@ -8,6 +8,7 @@ import torch
 from transformers.tokenization_utils_base import BatchEncoding
 from typing import Iterable, List, Optional
 from enum import Enum
+import re
 from datasets import Dataset
 
 
@@ -82,6 +83,9 @@ class BaseFakepedia(ContextQueryDataset):
         self._set_val_data()
         self._set_test_data()
 
+    def is_response_correct(self, label, prediction):
+        return prediction.startswith(label)
+
 
 class MultihopFakepedia(BaseFakepedia):
     def __init__(
@@ -138,6 +142,13 @@ class Arithmetic(ContextQueryDataset):
         test_df["prior_answer"] = test_df["prior_answer"].apply(str)
         test_df["ctx_answer"] = test_df["ctx_answer"].apply(str)
         self.test_data = Dataset.from_pandas(test_df, split="test", preserve_index=False)
+
+    def is_response_correct(self, prediction, label):
+        return (
+            prediction.startswith(label)
+            or prediction.endswith(label)
+            or label in [x.strip().strip(",.;/") for x in re.split("=|\n", prediction)]
+        )
 
 
 class Yago(ContextQueryDataset):

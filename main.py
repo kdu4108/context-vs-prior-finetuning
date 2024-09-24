@@ -106,8 +106,8 @@ def get_args():
         "-EV",
         "--EXTRA_EVALS",
         type=json.loads,
-        default=[],
-        # default=[{"dataset_name": "Arithmetic", "k_demonstrations": 0, "context_weight_format": "instruction"}],
+        # default=[],
+        default=[{"dataset_name": "Arithmetic", "k_demonstrations": 0, "context_weight_format": "instruction"}],
         help="Datasets on which to run evals. Expected format: a List of Dicts containing {'dataset_name': str, 'k_demonstrations': int, 'context_weight_format': str}",
     )
     parser.add_argument(
@@ -260,7 +260,9 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
-            attn_implementation="eager" if "gemma" in model_id.lower() else "sdpa" # it is recommended to use eager for gemma models
+            attn_implementation="eager"
+            if "gemma" in model_id.lower()
+            else "sdpa",  # it is recommended to use eager for gemma models
         )
         print(f"Loaded pretrained model from {model_dir}")
     else:
@@ -272,13 +274,17 @@ def main():
             load_in_8bit=LOAD_IN_8BIT,
             peft_config=peft_config,
             train_mode=train_mode,
-            attn_implementation="eager" if "gemma" in model_id.lower() else "sdpa" # it is recommended to use eager for gemma models
+            attn_implementation="eager"
+            if "gemma" in model_id.lower()
+            else "sdpa",  # it is recommended to use eager for gemma models
         )
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
             # SFT Train
-            response_template_ids = tokenizer.encode(response_template, add_special_tokens=False) # [1:] to remove <|start_header_id|>
+            response_template_ids = tokenizer.encode(
+                response_template, add_special_tokens=False
+            )  # [1:] to remove <|start_header_id|>
 
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
@@ -378,10 +384,17 @@ def main():
                 batched=True,
             )
             eval_results = evaluate_model(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE)), batch_sz=EVAL_BATCH_SZ
+                model=model,
+                tokenizer=tokenizer,
+                dataset=test_dataset.select(range(TEST_SIZE)),
+                batch_sz=EVAL_BATCH_SZ,
+                is_response_correct_func=dataset.is_response_correct,
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
-                model=model, tokenizer=tokenizer, dataset=test_dataset.select(range(TEST_SIZE))
+                model=model,
+                tokenizer=tokenizer,
+                dataset=test_dataset.select(range(TEST_SIZE)),
+                is_response_correct_func=dataset.is_response_correct,
             )
             eval_results = eval_results.map(
                 lambda row: {
