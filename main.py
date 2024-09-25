@@ -289,11 +289,17 @@ def main():
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
-            # SFT Train
-            response_template_ids = tokenizer.encode(
-                response_template, add_special_tokens=False
-            )  # [1:] to remove <|start_header_id|>
-
+             # SFT Train
+            if response_template.startswith("\n"):
+                # https://huggingface.co/docs/trl/v0.7.2/en/sft_trainer#using-tokenids-directly-for-responsetemplate
+                # adding a \n to the start of the response template will result in a different tokenization for the first token (otherwise the first token is tokenized differently): Edit JM: Not true, same tokenization, we need to remove <eot_id> and \n though (so 2 now)
+                response_template_ids = tokenizer.encode(
+                    response_template, add_special_tokens=False
+                )[2:] # to remove \n and somehow <eot_id>, JM: I don't understand why this is necessary, but it is for Llama3
+            else:
+                response_template_ids = tokenizer.encode(
+                    response_template, add_special_tokens=False
+                )
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
                 model=model,
@@ -365,6 +371,7 @@ def main():
             print(
                 f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples and with context weight format of `{eval_ctx_weight_format}`."
             )
+            ds_class: ContextQueryDataset = getattr(sys.modules[__name__], eval_name)()
 
             # Collect data for few shot example demonstrations
             few_shot_examples_path = os.path.join(
@@ -399,13 +406,13 @@ def main():
                 tokenizer=tokenizer,
                 dataset=test_dataset.select(range(TEST_SIZE)),
                 batch_sz=EVAL_BATCH_SZ,
-                is_response_correct_func=dataset.is_response_correct,
+                is_response_correct_func=ds_class.is_response_correct,
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model,
                 tokenizer=tokenizer,
                 dataset=test_dataset.select(range(TEST_SIZE)),
-                is_response_correct_func=dataset.is_response_correct,
+                is_response_correct_func=ds_class.is_response_correct,
             )
             eval_results = eval_results.map(
                 lambda row: {
