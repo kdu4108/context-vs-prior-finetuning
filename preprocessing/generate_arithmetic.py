@@ -216,5 +216,5 @@ def generate_and_preprocess_dataset(split, num_examples, max_depth, upper_answer
 
 generate_and_preprocess_dataset("d2ub99", num_examples=1050, max_depth=2, upper_answer_bound=99)
 generate_and_preprocess_dataset("d1ub99", num_examples=250, max_depth=1, upper_answer_bound=99)
-generate_and_preprocess_dataset("d2ub9", num_examples=1000, max_depth=2, upper_answer_bound=9)
+generate_and_preprocess_dataset("d2ub9", num_examples=1050, max_depth=2, upper_answer_bound=9)
 generate_and_preprocess_dataset("d1ub9", num_examples=120, max_depth=1, upper_answer_bound=9)
