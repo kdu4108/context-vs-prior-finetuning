@@ -9,7 +9,7 @@ from utils import partition_df
 ROOT_DATA_DIR = "data/Arithmetic"
 
 
-def generate_dataset(num_examples=5000, mod=None, max_depth=3):
+def generate_dataset(num_examples=100, mod=None, max_depth=1):
     operators = {
         "+": operator.add,
         "-": operator.sub,
@@ -163,7 +163,10 @@ def preprocess_dataset(df):
     df_all["prior_answer"] = df_all["prior_answer"].apply(str)
     df_all["ctx_answer"] = df_all["ctx_answer"].apply(str)
 
-    train_df, val_df, test_df = partition_df(df_all, columns=["query"])
+    # train_df, val_df, test_df = partition_df(df_all, columns=["query"])
+    train_df = pd.DataFrame()
+    val_df = pd.DataFrame()
+    test_df = df_all
 
     full_dir = os.path.join(ROOT_DATA_DIR, "splits", "base")
     os.makedirs(full_dir, exist_ok=True)
