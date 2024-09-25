@@ -139,7 +139,7 @@ def generate_dataset(num_examples=1050, mod=None, max_depth=2, upper_answer_boun
     )
 
 
-def preprocess_dataset(df):
+def preprocess_dataset(df, split):
     def interleave_datasets(df1, df2):
         # Ensure df1 and df2 have the same number of rows
         min_rows = min(len(df1), len(df2))
@@ -175,7 +175,7 @@ def preprocess_dataset(df):
     # val_df = pd.DataFrame()
     # test_df = df_all
 
-    full_dir = os.path.join(ROOT_DATA_DIR, "splits", "d2ub99")
+    full_dir = os.path.join(ROOT_DATA_DIR, "splits", split)
     os.makedirs(full_dir, exist_ok=True)
     train_df.to_csv(
         os.path.join(full_dir, "train.csv"),
@@ -211,7 +211,7 @@ def generate_and_preprocess_dataset(split, num_examples, max_depth, upper_answer
     arithmetic_dataset.to_csv(save_path, sep=",", index=None)
     print(f"Dataset with {len(arithmetic_dataset)} examples generated and saved to '{save_path}'.")
 
-    preprocess_dataset(arithmetic_dataset)
+    preprocess_dataset(arithmetic_dataset, split=split)
 
 
 generate_and_preprocess_dataset("d2ub99", num_examples=1050, max_depth=2, upper_answer_bound=99)
