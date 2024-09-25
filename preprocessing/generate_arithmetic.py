@@ -9,13 +9,14 @@ from utils import partition_df
 ROOT_DATA_DIR = "data/Arithmetic"
 
 
-def generate_dataset(num_examples=100, mod=None, max_depth=1):
+def generate_dataset(num_examples=1050, mod=None, max_depth=2, upper_answer_bound=99):
     operators = {
         "+": operator.add,
         "-": operator.sub,
         "*": operator.mul,
-        # '/': operator.floordiv,  # Using floor division for integer results
-        # "**": pow,
+        # "%": operator.mod,
+        "/": operator.truediv,  # Using floor division for integer results
+        "**": pow,
     }
 
     dataset = []
@@ -58,7 +59,7 @@ def generate_dataset(num_examples=100, mod=None, max_depth=1):
         for _ in range(num_ops):
             op = random.choice(list(operators.keys()))
             num1 = random.randint(0, 9)
-            num2 = random.randint(0, 9)
+            num2 = random.randint(0 if op != "/" else 1, 9)
             expression.append((op, num1, num2))
 
         random.shuffle(expression)
@@ -81,7 +82,10 @@ def generate_dataset(num_examples=100, mod=None, max_depth=1):
 
         try:
             original_answer = evaluate_expression(problem, operators)
-            if original_answer < 0 or original_answer > 9:
+            if int(original_answer) != original_answer:
+                continue
+            original_answer = int(original_answer)
+            if original_answer < 0 or original_answer > upper_answer_bound:
                 continue
 
             original_op_count = count_operators(problem)
@@ -107,7 +111,10 @@ def generate_dataset(num_examples=100, mod=None, max_depth=1):
 
             # Evaluate the new problem
             new_answer = evaluate_expression(new_problem, operators)
-            if new_answer < 0 or new_answer > 9 or new_answer == original_answer:
+            if int(new_answer) != new_answer:
+                continue
+            new_answer = int(new_answer)
+            if new_answer < 0 or new_answer > upper_answer_bound or new_answer == original_answer:
                 continue
 
             dataset.append(
@@ -163,12 +170,12 @@ def preprocess_dataset(df):
     df_all["prior_answer"] = df_all["prior_answer"].apply(str)
     df_all["ctx_answer"] = df_all["ctx_answer"].apply(str)
 
-    # train_df, val_df, test_df = partition_df(df_all, columns=["query"])
-    train_df = pd.DataFrame()
-    val_df = pd.DataFrame()
-    test_df = df_all
+    train_df, val_df, test_df = partition_df(df_all, columns=["query"], val_frac=0.01, test_frac=0.9)
+    # train_df = pd.DataFrame()
+    # val_df = pd.DataFrame()
+    # test_df = df_all
 
-    full_dir = os.path.join(ROOT_DATA_DIR, "splits", "base")
+    full_dir = os.path.join(ROOT_DATA_DIR, "splits", "d2ub99")
     os.makedirs(full_dir, exist_ok=True)
     train_df.to_csv(
         os.path.join(full_dir, "train.csv"),
@@ -185,20 +192,29 @@ def preprocess_dataset(df):
     print(f"Preprocessed and saved dataset to {full_dir}")
 
 
-# Generate the dataset
-SEED = 0
-random.seed(SEED)
+def generate_and_preprocess_dataset(split, num_examples, max_depth, upper_answer_bound, mod=None):
+    # Generate the dataset
+    SEED = 0
+    random.seed(SEED)
 
-arithmetic_dataset = generate_dataset(mod=None)
+    arithmetic_dataset = generate_dataset(
+        num_examples=num_examples, mod=mod, max_depth=max_depth, upper_answer_bound=upper_answer_bound
+    )
 
-if (arithmetic_dataset["prior_answer"] == arithmetic_dataset["ctx_answer"]).any():
-    print(arithmetic_dataset[arithmetic_dataset["prior_answer"] == arithmetic_dataset["ctx_answer"]])
-    raise ValueError("prior and context answer are the same for at least one element.")
+    if (arithmetic_dataset["prior_answer"] == arithmetic_dataset["ctx_answer"]).any():
+        print(arithmetic_dataset[arithmetic_dataset["prior_answer"] == arithmetic_dataset["ctx_answer"]])
+        raise ValueError("prior and context answer are the same for at least one element.")
 
-print(arithmetic_dataset.head())
-os.makedirs(ROOT_DATA_DIR, exist_ok=True)
-save_path = os.path.join(ROOT_DATA_DIR, "arithmetic_dataset.csv")
-arithmetic_dataset.to_csv(save_path, sep=",", index=None)
-print(f"Dataset with {len(arithmetic_dataset)} examples generated and saved to '{save_path}'.")
+    print(arithmetic_dataset.head())
+    os.makedirs(ROOT_DATA_DIR, exist_ok=True)
+    save_path = os.path.join(ROOT_DATA_DIR, "arithmetic_dataset.csv")
+    arithmetic_dataset.to_csv(save_path, sep=",", index=None)
+    print(f"Dataset with {len(arithmetic_dataset)} examples generated and saved to '{save_path}'.")
 
-preprocess_dataset(arithmetic_dataset)
+    preprocess_dataset(arithmetic_dataset)
+
+
+generate_and_preprocess_dataset("d2ub99", num_examples=1050, max_depth=2, upper_answer_bound=99)
+generate_and_preprocess_dataset("d1ub99", num_examples=250, max_depth=1, upper_answer_bound=99)
+generate_and_preprocess_dataset("d2ub9", num_examples=1000, max_depth=2, upper_answer_bound=9)
+generate_and_preprocess_dataset("d1ub9", num_examples=120, max_depth=1, upper_answer_bound=9)
