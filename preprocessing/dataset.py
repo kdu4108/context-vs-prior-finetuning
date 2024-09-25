@@ -69,9 +69,9 @@ class ContextQueryDataset:
 class BaseFakepedia(ContextQueryDataset):
     def __init__(
         self,
-        train_path: str = "data/BaseFakepedia/train.csv",
-        val_path: str = "data/BaseFakepedia/val.csv",
-        test_path: str = "data/BaseFakepedia/test.csv",
+        train_path: str = "data/BaseFakepedia/splits/nodup_relpid/train.csv",
+        val_path: str = "data/BaseFakepedia/splits/nodup_relpid/val.csv",
+        test_path: str = "data/BaseFakepedia/splits/nodup_relpid/test.csv",
         train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -83,16 +83,16 @@ class BaseFakepedia(ContextQueryDataset):
         self._set_val_data()
         self._set_test_data()
 
-    def is_response_correct(self, label, prediction):
+    def is_response_correct(self, prediction, label):
         return prediction.startswith(label)
 
 
 class MultihopFakepedia(BaseFakepedia):
     def __init__(
         self,
-        train_path: str = "data/MultihopFakepedia/train.csv",
-        val_path: str = "data/MultihopFakepedia/val.csv",
-        test_path: str = "data/MultihopFakepedia/test.csv",
+        train_path: str = "data/MultihopFakepedia/splits/nodup_relpid/train.csv",
+        val_path: str = "data/MultihopFakepedia/splits/nodup_relpid/val.csv",
+        test_path: str = "data/MultihopFakepedia/splits/nodup_relpid/test.csv",
         train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
