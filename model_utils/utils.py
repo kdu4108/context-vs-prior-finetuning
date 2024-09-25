@@ -217,6 +217,7 @@ def compute_metrics(df, is_response_correct_func=response_startswith_label):
 
     return metrics
 
+
 def compute_metrics_only_og_correct(df):
     metrics = compute_metrics(df[df["query_only_is_correct"] == True])  # noqa
     del metrics["query_only_acc"]
@@ -826,9 +827,10 @@ from typing import NamedTuple
 
 
 def construct_test_results_dir(
-    base_results_dir: str, eval_name: str, k_demonstrations: int, context_weight_format: str
+    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, context_weight_format: str
 ):
     eval_id = eval_name
+    eval_id += f"-sp_{subsplit}"
     eval_id += f"-k{k_demonstrations}"
     eval_id += f"-cwf_{context_weight_format}"
     return os.path.join(base_results_dir, eval_id)
@@ -836,8 +838,8 @@ def construct_test_results_dir(
 
 class EvalConfig(NamedTuple):
     """Config for evaluating a model's ability to follow context vs prior according to a weight flag."""
+
     dataset_name: str
     subsplit: str
     k_demonstrations: int
     context_weight_format: str
-    
