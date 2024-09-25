@@ -183,6 +183,10 @@ def compute_mr(df, is_response_correct_func=response_startswith_label) -> Tuple[
     return num_prior_answers / (num_prior_answers + num_ctx_answers), num_other_answers / len(df)
 
 
+def compute_pair_acc(df):
+    return df.groupby(["context", "query"]).agg("min")["is_correct"].mean()
+
+
 def compute_metrics(df, is_response_correct_func=response_startswith_label):
     ctx_pref_df = df[df["weight_context"] == 1.0]
     prior_pref_df = df[df["weight_context"] == 0.0]
@@ -195,8 +199,11 @@ def compute_metrics(df, is_response_correct_func=response_startswith_label):
 
     overall_mr, overall_other = compute_mr(df)
 
+    pair_acc = compute_pair_acc(df)
+
     metrics = {
         "acc": df["is_correct"].mean(),  # Overall accuracy
+        "pair_acc": pair_acc,
         "context_acc": context_acc,  # accuracy across the examples that SHOULD follow the context
         "prior_acc": prior_acc,  # accuracy across the examples that SHOULD follow the prior
         "context_mr": context_mr,  # MR across the examples that SHOULD follow the context (we want this to be low)
@@ -210,7 +217,6 @@ def compute_metrics(df, is_response_correct_func=response_startswith_label):
 
     return metrics
 
-
 def compute_metrics_only_og_correct(df):
     metrics = compute_metrics(df[df["query_only_is_correct"] == True])  # noqa
     del metrics["query_only_acc"]
@@ -221,7 +227,7 @@ def evaluate_model_queries_only(
     model,
     tokenizer,
     dataset: Dataset,
-    max_new_tokens: int = 50,
+    max_new_tokens: int = 30,
     batch_sz: int = 8,  # "auto",
     device: str = "auto",
     is_response_correct_func=response_startswith_label,
@@ -599,7 +605,7 @@ LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
         "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
         "END_OF_ROUND": "<|eot_id|>",
     },
-    "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+    "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
 )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 
 # MISTRAL INSTRUCT
@@ -625,7 +631,7 @@ LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE = (
 # GEMMA
 GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
     {
-        "SYSTEM": """<start_of_turn>user\n{}""",
+        "SYSTEM": """<start_of_turn>user\n{} """,
         "ROUND": """{}<end_of_turn>\n<start_of_turn>model\n{}""",
         "END_OF_ROUND": """<end_of_turn>""",
     },
@@ -639,10 +645,6 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "meta-llama/Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "meta-llama/Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "meta-llama/Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "meta-llama/Meta-Llama-3-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
@@ -656,14 +658,6 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
-    "mistralai/Mistral-7B-Instruct-v0.3": (
-        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
-        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
-    ),
-    "mistralai/Mistral-7B-v0.3": (
-        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
-        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
-    ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
@@ -673,8 +667,6 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
-    "google/gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
-    "google/gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
 
 CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
@@ -834,10 +826,9 @@ from typing import NamedTuple
 
 
 def construct_test_results_dir(
-    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, context_weight_format: str
+    base_results_dir: str, eval_name: str, k_demonstrations: int, context_weight_format: str
 ):
     eval_id = eval_name
-    eval_id += f"-sp_{subsplit}"
     eval_id += f"-k{k_demonstrations}"
     eval_id += f"-cwf_{context_weight_format}"
     return os.path.join(base_results_dir, eval_id)
@@ -845,8 +836,8 @@ def construct_test_results_dir(
 
 class EvalConfig(NamedTuple):
     """Config for evaluating a model's ability to follow context vs prior according to a weight flag."""
-
     dataset_name: str
     subsplit: str
     k_demonstrations: int
     context_weight_format: str
+    
