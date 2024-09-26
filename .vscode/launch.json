@@ -141,6 +141,24 @@
             "justMyCode": false
         },
         {
+            "name": "train 2048 llama3.1 float",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "float", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 llama3.1 instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
+            "justMyCode": false
+        },
+        {
             "name": "train 2048 llama3.1 Instruct instruction",
             "type": "debugpy",
             "request": "launch",
@@ -159,12 +177,30 @@
             "justMyCode": false
         },
         {
+            "name": "train 2048 llama3.1 instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 llama3.1 float",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "float", "-O"],
+            "justMyCode": false
+        },
+        {
             "name": "fewshot basefakepedia",
             "type": "debugpy",
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-SP", "nodup_relpid", "-F", "-S", "3", "-TS", "2048", "-TSS", "1000", "-NT"],
+            "args": ["BaseFakepedia", "-SP", "nodup_relpid", "-F", "-S", "3", "-TS", "2048", "-TSS", "1000", "-NT", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B","-CWF", "instruction"],
             "justMyCode": false
         },
         {
@@ -183,6 +219,51 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": ["Arithmetic", "-NT"," -M", "unsloth/llama-3-8b-Instruct-bnb-4bit", "-F", "-SP", "base"],
+            "justMyCode": false
+        },
+        {
+            "name": "das",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "analysis/scripts/das_eval.py",
+            "console": "integratedTerminal",
+            "args": [""],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 gemma2-9b-it instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/gemma_hf/gemma-2-9b-it",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "2", "-GA", "8", "-CWF", "instruction", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 gemma2-9b instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/gemma_hf/gemma-2-9b",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "2", "-GA", "8", "-CWF", "instruction", "-O"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 mistral-instruct instruction",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/mistral_hf/Mistral-7B-Instruct-v0.3",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "2", "-GA", "8", "-CWF", "instruction"],
+            "justMyCode": false
+        },
+        {
+            "name": "train 2048 llama3.1 instruction arithmetic",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main.py",
+            "console": "integratedTerminal",
+            "args": ["Arithmetic", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
             "justMyCode": false
         },
     ]

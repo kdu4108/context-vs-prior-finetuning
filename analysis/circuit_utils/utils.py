@@ -48,13 +48,26 @@ def get_default_parser():
         "--subsplit",
         type=str,
         default="nodup_relpid",
-        choices=[
-            "nodup_relpid",
-            "nodup_relpid_obj",
-            "nodup_relpid_subj",
-            "nodup_s_or_rel_or_obj",
-            "base",
-        ],
+        # choices=[
+        #     "nodup_relpid",
+        #     "nodup_relpid_obj",
+        #     "nodup_relpid_subj",
+        #     "nodup_s_or_rel_or_obj",
+        #     "base",
+        # ],
+        help="Name of the dataset subsplit to use.",
+    )
+    parser.add_argument(
+        "--eval-subsplit",
+        type=str,
+        default="nodup_relpid",
+        # choices=[
+        #     "nodup_relpid",
+        #     "nodup_relpid_obj",
+        #     "nodup_relpid_subj",
+        #     "nodup_s_or_rel_or_obj",
+        #     "base",
+        # ],
         help="Name of the dataset subsplit to use.",
     )
     return parser
@@ -86,7 +99,11 @@ def paths_from_args(args):
     VAL_DATA_ALL = os.path.join(DATAROOT, "splits", args.subsplit, "val.csv")
     TRAIN_DATA_ALL = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
     
-    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}-k{args.shots}-cwf_{args.context_weight_format}")
+    sp_args = ""
+    if args.eval_subsplit != "nodup_relpid":
+        sp_args = f"-sp_{args.eval_subsplit}"
+
+    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}{sp_args}-k{args.shots}-cwf_{args.context_weight_format}")
     FEW_SHOT_SAMPLE = os.path.join(RESULTS_DIR, "few_shot_sample.csv")
     TEST_DATA = os.path.join(RESULTS_DIR, "test.csv")
     
@@ -131,13 +148,19 @@ def filter_for_true_pairs(data):
     return data
 
 def encode_answer(answers_source, answers_target, tokenizer, device, args):
+    # convert to strings
+    if not isinstance(answers_source, list):
+        answers_source = answers_source.astype(str).tolist()
+        answers_target = answers_target.astype(str).tolist()
+    else:
+        answers_source = [str(a) for a in answers_source]
+        answers_target = [str(a) for a in answers_target]
     # test whether we need to add a newline before the answer
     prefix= ""
     idx = 0
     if MODEL_ID_TO_TEMPLATES_DICT[args.model_id][0]["ROUND"].replace("{}", "")[-1] == "\n":
         logger.info(f"Round ends with newline, testing if we need to add it")
         test_toks = tokenizer.encode("\n" + answers_source[0])
-        print(test_toks)
         if tokenizer.decode(test_toks)[0] == "\n":
             logger.info("Tokenizer merges newline and first token, adding it before the answer")
             prefix = "\n"

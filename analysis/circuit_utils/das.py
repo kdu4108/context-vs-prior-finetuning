@@ -13,11 +13,11 @@ from tqdm import trange
 from datasets import Dataset
 from nnsight import NNsight
 from main import load_model_and_tokenizer
-from model_utils.utils import is_response_correct, MODEL_ID_TO_TEMPLATES_DICT, construct_query_with_demonstrations 
+from model_utils.utils import MODEL_ID_TO_TEMPLATES_DICT, construct_query_with_demonstrations 
 import random
-
+from nnpatch.api.gemma import Gemma2
 from analysis.circuit_utils.utils import encode_answer
-from analysis.circuit_utils.demonstrations import get_patched_residuals, get_probs, patch_scope, config_to_site
+from analysis.circuit_utils.decoding import get_patched_residuals, get_probs, patch_scope, config_to_site
 
 def load_map_training_data(tokenizer, args, PATHS):
     train_data = pd.read_csv(PATHS["TRAIN_DATA"])

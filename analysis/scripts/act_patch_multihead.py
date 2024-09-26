@@ -161,7 +161,7 @@ def multihead_patch_greedy(args, PATHS, file, model, tokenizer):
         all_results = {}
         sites_list = []
         heads = []
-        
+        scores = []
         while len(heads) < args.topk:
             # top head
             tophead = current_score.topk(1).indices.item()
@@ -171,6 +171,8 @@ def multihead_patch_greedy(args, PATHS, file, model, tokenizer):
             heads.append(tophead)
             logger.info(f"Current heads {heads}")
             logger.info(f"Current score {current_score[tophead_flat]}")
+            scores.append(current_score[tophead_flat].item())
+
             sites_list += [
                 Site.get_site(
                     Llama3, head, tophead[0], tophead[1], torch.tensor([-1]), "default"
@@ -199,7 +201,7 @@ def multihead_patch_greedy(args, PATHS, file, model, tokenizer):
             current_score = all_results[f"MultiSite(('{head}',))"].flatten()
             
             
-    return heads, all_results
+    return heads, scores
 
 if __name__ == "__main__":
     parser = get_default_parser()
@@ -241,8 +243,8 @@ if __name__ == "__main__":
     model, tokenizer = load_model_and_tokenizer_from_args(PATHS, args)
 
     if args.greedy:
-        all_results, _  = multihead_patch_greedy(args, PATHS, file, model, tokenizer)
+        heads, scores  = multihead_patch_greedy(args, PATHS, file, model, tokenizer)
     else:
         all_results, act_patch_sum = multihead_patch(args, PATHS, file,  model, tokenizer)
     
-    torch.save(all_results, os.path.join(args.output_dir, f"multihead_{'greedy_' if args.greedy else ''}{run_name}{suffix}"))
+    torch.save({"heads": heads, "scores": scores}, os.path.join(args.output_dir, f"multihead_{'greedy_' if args.greedy else ''}{run_name}{suffix}"))

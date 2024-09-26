@@ -401,17 +401,18 @@ def main():
                 },
                 batched=True,
             )
+            print(dataset)
             eval_results = evaluate_model(
                 model=model,
                 tokenizer=tokenizer,
-                dataset=test_dataset.select(range(TEST_SIZE)),
+                dataset=test_dataset.select(range(min(TEST_SIZE, len(test_dataset)))),
                 batch_sz=EVAL_BATCH_SZ,
                 is_response_correct_func=ds_class.is_response_correct,
             )
             query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
                 model=model,
                 tokenizer=tokenizer,
-                dataset=test_dataset.select(range(TEST_SIZE)),
+                dataset=test_dataset.select(range(min(TEST_SIZE, len(test_dataset)))),
                 is_response_correct_func=ds_class.is_response_correct,
             )
             eval_results = eval_results.map(
@@ -440,6 +441,8 @@ def main():
                 few_shot_examples_sampled_df.to_csv(
                     os.path.join(test_results_dir, "few_shot_examples.csv"), index=False
                 )
+
+            print(f"Saving eval results to {test_results_path}")
             eval_results.to_csv(test_results_path, index=False)
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
                 json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
