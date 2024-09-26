@@ -150,7 +150,26 @@ def batch_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_
         residuals.append(get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=scan, validate=validate))
     return torch.cat(residuals)
 
-def get_decoding_args(cwf="instruction", model_id="Meta-Llama-3.1-8B", model_store="", finetuned=True, no_filtering=False, batch_size=32, n_samples=1000, load_in_4bit=False, shots=0):
+def get_single_residuals(nnmodel, tokens, attention_mask, layer, scan=False, validate=False):
+    residuals = []
+    # Clean run
+    with nnmodel.trace(tokens, attention_mask=attention_mask, scan=scan, validate=validate) as invoker:
+        residuals.append(nnmodel.model.layers[layer].output[0][:,-1,:].save())
+        nnmodel.model.layers[layer].output[0].stop()
+    residuals[-1] = residuals[-1].value.detach().cpu()
+            
+    residuals = torch.cat(residuals, dim=0)
+    torch.cuda.empty_cache()
+    return residuals
+
+def batch_get_single_residuals(nnmodel, tokens, attention_mask, layer, batch_size=32, scan=False, validate=False):
+    residuals = []
+    for i in trange(0, tokens.shape[0], batch_size):
+        residuals.append(get_single_residuals(nnmodel, tokens[i:i+batch_size], attention_mask[i:i+batch_size], layer, scan=scan, validate=validate))
+    return torch.cat(residuals)
+
+
+def get_decoding_args(cwf="instruction", model_id="Meta-Llama-3.1-8B", model_store="", finetuned=True, no_filtering=False, batch_size=32, n_samples=1000, load_in_4bit=False, shots=0, dataset="BaseFakepedia"):
     base_args = [
         "--context-weight-format", cwf, 
         "--n-samples", str(n_samples),
@@ -161,7 +180,8 @@ def get_decoding_args(cwf="instruction", model_id="Meta-Llama-3.1-8B", model_sto
         "--model-id", model_id,
         "--model-store", model_store,
         "--shots", str(shots),
-        "--finetune-training-args", None
+        "--finetune-training-args", None,
+        "--dataset", dataset
     ]
     if load_in_4bit:
         base_args.append("--load-4bit")

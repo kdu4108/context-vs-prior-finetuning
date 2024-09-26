@@ -105,9 +105,9 @@ class MultihopFakepedia(BaseFakepedia):
 class Arithmetic(ContextQueryDataset):
     def __init__(
         self,
-        train_path: str = "data/Arithmetic/splits/base/train.csv",
-        val_path: str = "data/Arithmetic/splits/base/val.csv",
-        test_path: str = "data/Arithmetic/splits/base/test.csv",
+        train_path: str = "data/Arithmetic/splits/nodup_relpid/train.csv",
+        val_path: str = "data/Arithmetic/splits/nodup_relpid/val.csv",
+        test_path: str = "data/Arithmetic/splits/nodup_relpid/test.csv",
         train_size: int = None,
         seed: Optional[int] = None,
     ) -> None:
@@ -153,6 +153,20 @@ class Arithmetic(ContextQueryDataset):
             print("Couldn't load and set test data for Arithmetic.")
 
     def is_response_correct(self, prediction, label):
+        # Convert prediction and label to lowercase for case-insensitive comparison
+        prediction = prediction.lower().strip()
+        label = label.lower().strip()
+
+        # Dictionary to convert English number words to digits
+        number_words = {
+            'zero': '0', 'one': '1', 'two': '2', 'three': '3', 'four': '4',
+            'five': '5', 'six': '6', 'seven': '7', 'eight': '8', 'nine': '9',
+        }
+
+        # Convert English number words to digits in both prediction and label
+        for word, digit in number_words.items():
+            prediction = prediction.replace(word, digit).replace(word.capitalize(), digit)
+
         return (
             prediction.startswith(label)
             or prediction.endswith(label)

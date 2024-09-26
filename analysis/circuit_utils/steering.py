@@ -1,12 +1,13 @@
 import torch
 
 class SteerHook:
-    def __init__(self, proj, layer, value=None, device=None):
+    def __init__(self, proj, layer, value=None, device=None, last_token_only=True):
         self.proj = proj
         self.value = value
         self.layer = layer
         self.hook = None
         self.device = device if device is not None else torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.last_token_only = last_token_only
         self.proj.to(self.device)
         self._activated = True
 
@@ -24,12 +25,18 @@ class SteerHook:
         assert self.hook is not None, "Hook is not set"
         assert value is not None, "Value is not set"
         assert value.shape[0] == output[0].shape[0], f"Value shape {value.shape} does not match input shape {input.shape}"
-        base = output[0][:,-1,:]
+        if self.last_token_only:
+            base = output[0][:,-1,:]
+        else:
+            base = output[0]
         rotated_base = self.proj.rotate_layer(base)
         steered_base = base + torch.matmul(
                 (value.unsqueeze(1) - rotated_base), self.proj.rotate_layer.weight.T
             )
-        output[0][:,-1,:] = steered_base
+        if self.last_token_only:
+            output[0][:,-1,:] = steered_base
+        else:
+            output[0][:,:,:] = steered_base
         return output
 
     def remove(self):
@@ -49,8 +56,8 @@ class SteerHook:
         self._activated = True
 
 class CtxPriorHook(SteerHook):
-    def __init__(self, proj, layer, prior_value=6.0, context_value=-6.0):
-        super().__init__(proj, layer)
+    def __init__(self, proj, layer, prior_value=6.0, context_value=-6.0, last_token_only=True):
+        super().__init__(proj, layer, last_token_only=last_token_only)
         self.prior_value = prior_value
         self.context_value = context_value
         self.value = self.prior_value

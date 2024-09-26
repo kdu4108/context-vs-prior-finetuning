@@ -1055,12 +1055,13 @@ def to_standart_label(label):
 
 
 column_map = {
-    "baseline": "Baseline: No Steering with Intent Instruction",
+    "baseline": "Baseline: Intent Instruction",
     "with_instruction": "Steering: Same Instruction",
     "against_instruction": "Steering: Opposite Instruction",
     "one_word": "Steering: Only One Word Instruction",
     "one_word_instruction": "Steering: One Word Instruction and Same Instruction",
-    "no_instruction": "Steering: No Intent Instruction"
+    "no_instruction": "Steering: No Instruction",
+    "baseline_one_word_instruction": "Baseline: Intent + One Word Instruction"
 }
 metric_map = {
     "accuracy": "Accuracy",
@@ -1069,7 +1070,7 @@ metric_map = {
 
 
 ORDER = ["instruct_ft_instruction", "instruct_ft_float", "base_ft_instruction", "base_ft_float", "instruct_fs_instruction", "instruct_fs_float", "base_fs_instruction", "base_fs_float", "instruct_zs_instruction", "instruct_zs_float", "base_zs_instruction", "base_zs_float"]
-def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baseline_for_zs=False, COLORS=TailwindColorPalette()):
+def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baseline_for_zs=False, COLORS=TailwindColorPalette(), extended_legend=False):
     if use_one_word_baseline_for_zs:
         for key in data.keys():
             if "zs" in key:
@@ -1119,7 +1120,6 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
         # title=f'Feature F_{{w}} Causality - {metric_map[metric]}',
         # xaxis_title='Model Configuration',
         yaxis_title=metric_map[metric],
-        legend_title='Evaluation Setting',
         font=dict(size=16),
         xaxis=dict(tickangle=-45),
         width=2000,
@@ -1128,10 +1128,10 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
 
     fig.update_layout(legend=dict(
         yanchor="bottom",
-        y=0.05,
-        xanchor="left",
-        x=0.012,
-        orientation="v",
+        y=0.88,
+        xanchor="right",
+        x=0.992,
+        orientation="h",
         borderwidth=4,
         bordercolor="white"
     ))
@@ -1140,83 +1140,84 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
     # font
     fig.update_layout(font=dict(size=20))
     
-        
-    #Add custom legend for color codes
-    custom_annotations = [
-        go.Scatter(
-            x=[None],
-            y=[None],
-            mode='markers',
-            marker=dict(
-                size=10,
-                color=get_label_color("FT", COLORS)
+    
+    if extended_legend:
+        #Add custom legend for color codes
+        custom_annotations = [
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode='markers',
+                marker=dict(
+                    size=10,
+                    color=get_label_color("FT", COLORS)
+                ),
+                legendgroup='config',
+                showlegend=True,
+                name=' Finetuning (FT)',
+                legend = 'legend2'
             ),
-            legendgroup='config',
-            showlegend=True,
-            name=' Finetuning (FT)',
-            legend = 'legend2'
-        ),
-        go.Scatter(
-            x=[None],
-            y=[None],
-            mode='markers',
-            marker=dict(
-                size=10,
-                color=get_label_color("FS", COLORS)
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode='markers',
+                marker=dict(
+                    size=10,
+                    color=get_label_color("FS", COLORS)
+                ),
+                legendgroup='config',
+                showlegend=True,
+                name=' In-Context Learning (ICL)',
+                legend = 'legend2'
+
             ),
-            legendgroup='config',
-            showlegend=True,
-            name=' In-Context Learning (ICL)',
-            legend = 'legend2'
+            go.Scatter(
+                x=[None],
+                y=[None],
+                mode='markers',
+                marker=dict(
+                    size=10,
+                    color=get_label_color("ZS", COLORS)
+                ),
+                legendgroup='config',
+                showlegend=True,
+                name=' Zero-Shot (ZS)',
+                legend = 'legend2'
+            )
+        ]
 
-        ),
-        go.Scatter(
-            x=[None],
-            y=[None],
-            mode='markers',
-            marker=dict(
-                size=10,
-                color=get_label_color("ZS", COLORS)
-            ),
-            legendgroup='config',
-            showlegend=True,
-            name=' Zero-Shot (ZS)',
-            legend = 'legend2'
-        )
-    ]
-
-    # Add the custom legend to the figure
-    for annotation in custom_annotations:
-        fig.add_trace(annotation)
+        # Add the custom legend to the figure
+        for annotation in custom_annotations:
+            fig.add_trace(annotation)
 
 
-    # Add custom legend using annotations
-    legend_annotations = [
-        dict(
-        x=.995,
-        y=0.79,
-        xref="paper",
-        yref="paper",
-        text=f"🫵  IF = instruction<br>1️⃣  IF = float",
-        showarrow=False,
-        font=dict(size=20),
-        align="left",
-        bgcolor="rgba(255, 255, 255, 0.9)",
-        borderpad=10,
-        xanchor="right",
-        height=48,
-        width=292,
-        yanchor="top")
-        
-    ]
-    fig.update_layout(annotations=legend_annotations)
+        # Add custom legend using annotations
+        legend_annotations = [
+            dict(
+            x=.995,
+            y=0.79,
+            xref="paper",
+            yref="paper",
+            text=f"🫵  IF = instruction<br>1️⃣  IF = float",
+            showarrow=False,
+            font=dict(size=20),
+            align="left",
+            bgcolor="rgba(255, 255, 255, 0.9)",
+            borderpad=10,
+            xanchor="right",
+            height=48,
+            width=292,
+            yanchor="top")
+            
+        ]
+        fig.update_layout(annotations=legend_annotations)
 
     fig.update_layout(legend2=dict(
         yanchor="top",
         y=0.98,
         xanchor="right",
         x=0.995, #48
-        orientation="h",
+        orientation="v",
         bgcolor="rgba(255, 255, 255, 0.9)"
     ), margin=dict(l=0, r=0, t=0, b=0))
 

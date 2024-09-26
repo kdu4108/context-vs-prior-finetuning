@@ -212,8 +212,10 @@ def compute_metrics(df, is_response_correct_func=response_startswith_label):
         "context_pct_other": context_other,  # percent of examples featured a non-context or prior answer across examples that SHOULD follow the context (lower better)
         "prior_pct_other": prior_other,  # percent of examples that featured a non-context or prior answer across examples that SHOULD follow the prior (lower better)
         "overall_pct_other": overall_other,  # percent of examples that featured a non-context or prior answer across all examples (lower better)
-        "query_only_acc": df["query_only_is_correct"].mean(),
     }
+
+    if "query_only_is_correct" in df.columns:
+        metrics["query_only_acc"] = df["query_only_is_correct"].mean()
 
     return metrics
 
@@ -598,6 +600,14 @@ QUERY_TEMPLATE_STR_CTX_W_END = """Context: {context}
 Query: {query}
 Instruction: {weight}"""
 
+BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE = (
+    {
+        "SYSTEM": "System Instruction: {}\n",
+        "ROUND": "User: {}\n\nAssistant: {}",
+        "END_OF_ROUND": "\n\n",
+    },
+    "\n\nAssistant:",
+)
 
 # LLAMA3 INSTRUCT
 LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
@@ -643,9 +653,9 @@ GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
 MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "Meta-Llama-3.1-8B": (BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
-    "Meta-Llama-3-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "Meta-Llama-3-8B": ((BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE),,
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
@@ -656,8 +666,8 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
     "Mistral-7B-v0.3": (
-        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
-        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+        BASE_TEMPLATE_DICT,
+        BASE_RESPONSE_TEMPLATE,
     ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
@@ -666,7 +676,7 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
-    "gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "gemma-2-9b": (BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE),
     "gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
 }
 
