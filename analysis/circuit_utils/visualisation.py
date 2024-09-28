@@ -406,7 +406,7 @@ def get_name(head, shorten=False):
     if head.startswith('q'):
         return f'Attn Query{"<br>" if shorten else " "}(all heads)'
     elif head.startswith('o'):
-        return f"$\\text{{MHA act. }}a^l_n $"
+        return "MHA output" #f"$\\text{{MHA out }} a $"
     elif head.startswith('m'):
         return 'MLP'
     else:
@@ -417,7 +417,7 @@ def get_flow_chart_params(head, q_y_offset, q_x_offset):
     if head.startswith('q'):
         return 'circle', -RECT_WIDTH, -2 * q_y_offset, head
     elif head.startswith('o'):
-        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "$a_n$"
+        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "a"
     elif head.startswith('mlp'):
         head = head.replace('mlp', 'm')
         return 'square', 2 * q_x_offset, 3.5 * q_y_offset, head
@@ -616,7 +616,7 @@ def get_flow_chart_params_l(head, q_y_offset, q_x_offset):
     if head.startswith('q'):
         return 'circle', -RECT_WIDTH, -2 * q_y_offset, head
     elif head.startswith('o'):
-        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "$a$"
+        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, ""
     elif head.startswith('mlp'):
         head = head.replace('mlp', 'm')
         return 'square', 2 * q_x_offset, 3.5 * q_y_offset, head
@@ -679,7 +679,7 @@ def add_flow_chart_l(fig, y_pos, layers, color, residual_color, q_y_offset=0, q_
     if head.endswith('cross'):
         fig.add_trace(go.Scatter(
             x=[el + y_offset for el in layers],
-            y=[MAIN_LINE + x_offset] * len(layers),
+            y=[MAIN_LINE + x_offset ] * len(layers),
             mode='markers',
             marker=dict(size=12, color="red", symbol="line-ne", line=dict(color="red", width=1)),
             showlegend=False,
@@ -706,13 +706,13 @@ def get_colors(a_name, b_name):
     a_name = a_name.lower()
     b_name = b_name.lower()
     if "ctx" in a_name and "ctx" in b_name:
-        return COLORS.get_shade(3, 400), COLORS.get_shade(2, 500)
+        return COLORS.get_shade(6, 700), COLORS.get_shade(6, 500)
     elif "prior" in a_name and "prior" in b_name:
-        return COLORS.get_shade(1, 500), COLORS.get_shade(0, 500)
+        return COLORS.get_shade(3, 400), COLORS.get_shade(2, 500)
     elif "prior" in a_name and "ctx" in b_name:
-        return COLORS.get_shade(1, 500), COLORS.get_shade(3, 400)
+        return COLORS.get_shade(3, 400), COLORS.get_shade(6, 700)
     elif "ctx" in a_name and "prior" in b_name:
-        return COLORS.get_shade(3, 400), COLORS.get_shade(1, 500)
+        return COLORS.get_shade(6, 700), COLORS.get_shade(3, 400),
     
 
 def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True):
@@ -728,7 +728,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
 
     fig = sp.make_subplots(
         rows=num_sp, cols=1,  # Adjusted to have rows instead of columns
-        shared_xaxes=True, vertical_spacing=0.30,
+        shared_xaxes=True, vertical_spacing=0.40,
         specs=[[{'type': 'scatter'}]] + [[{'type': 'scatter'}] for _ in range(num_sp-1)],
         row_heights=[0.4, 0.6],
         subplot_titles=["<b>Patching Flow</b>"] + (["<b>Answer Probability</b>"] if add_prob else []) + (["Answer Rank"] if add_rank else []),
@@ -742,7 +742,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         line=dict(color=colors[num_rows-1].format(1.0), width=2, dash='dot'),
         showlegend=True,
         legend="legend1",
-        name="$\\text{Residual}$"
+        name="Residual" #"$\\text{Residual}$"
     ), row=1, col=1)
 
     for head in a_layers:
@@ -770,26 +770,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
                 name=get_name(head, shorten=False),
                 legend="legend1",
             ), row=1, col=1)
-        # fig.add_trace(go.Scatter(
-        #     x=[None],
-        #     y=[None],
-        #     mode='markers',
-        #     marker=dict(size=14, color=color, symbol=symbol, line=dict(color="black", width=1)),
-        #     showlegend=True,
-        #     name=get_name(head, shorten=False),
-        #     legend="legend1",
-        # ), row=1, col=1)
 
-    # fig.add_trace(go.Scatter(
-    #     x=[None],
-    #     y=[None],
-    #     mode='markers',
-    #     marker=dict(size=14, color="red", symbol="line-ne", line=dict(color="red", width=1)),
-    #     showlegend=True,
-    #     name="Avg Patch",
-    #     legend="legend1",
-    # ), row=1, col=1)
-    
     # Probability line plot
     if add_prob:
         upper = probs + std_devs_probs
@@ -821,7 +802,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
                 x=list(range(N_LAYERS)),
                 y=probs[:, i],
                 mode='lines',
-                name=f"$\\text{{{axs_titles[i]}}}$",
+                name=axs_titles[i],#f"$\\text{{{axs_titles[i]}}}$",
                 line=dict(color=colors[i].format(1.0)),
                 legend="legend2",
                 legendgroup="values"
@@ -849,7 +830,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             showlegend=True,
             legend='legend2',
             line=dict(width=1,color = 'black'),
-            name="$\\text{Mean}$",
+            name="Mean",#"$\\text{Mean}$",
             legendgroup="meta"
 
         ), row=next_row, col=1)
@@ -861,7 +842,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             showlegend=True,
             legend='legend2',
             line=dict(width=1, dash='dot', color = 'black'),
-            name="$\\text{Median}$",
+            name="Median",#"$\\text{Median}$",
             legendgroup="meta"
 
         ), row=next_row, col=1)
@@ -926,7 +907,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             showlegend=True,
             legend='legend2',
             line=dict(width=1,color = 'black'),
-            name="$\\text{Mean}$",
+            name="Mean",#"$\\text{Mean}$",
             legendgroup="meta"
 
         ), row=next_row, col=1)
@@ -973,7 +954,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         tickmode='array',
         tickvals=list(range(N_LAYERS)),
         ticktext=[str(i) for i in range(N_LAYERS)],
-        showgrid=True,tickfont=dict(size=16),
+        showgrid=True,tickfont=dict(size=18),
         ticks="outside",
         ticklen=6,
         minor_ticks="outside",
@@ -983,13 +964,17 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
     )    
     
     fig.update_xaxes(
-        title=dict(text= "Layer Number", font=dict(size=16)), 
+        title=dict(text= "Layer Number", font=dict(size=18)), 
         row=2, col=1,
     )
     
     # Adjust layout dimensions and margins
     height = 360 + (num_sp - 2) * 100
     fig.update_layout(height=height, width=800, title_text=title, margin=dict(l=40, r=40, t=100 if title else 40, b=0), plot_bgcolor='rgba(0,0,0,0)')
+
+  # increase font size
+    fig.update_layout(font=dict(size=25))
+    fig.update_annotations(font=dict(size=25))
 
     # Legends
     fig.update_layout(
@@ -1002,7 +987,9 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             # border
             bordercolor="black",  # Color of the border
             borderwidth=1,  # Width of the border
-            bgcolor="rgba(255,255,255,0.9)"),
+            bgcolor="rgba(255,255,255,0.9)",
+            font=dict(size=20)
+            ),
         legend2=dict(
             x=0.02,  
             y=0.36,  # Position the legend above the plot
@@ -1012,12 +999,12 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
             # border
             bordercolor="black",  # Color of the border
             borderwidth=1,  # Width of the border
-            bgcolor="rgba(255,255,255,0.9)"  # Background color of the legend
+            bgcolor="rgba(255,255,255,0.9)",
+            font=dict(size=20)
         ),
     )
 
-    # increase font size
-    fig.update_layout(font=dict(size=20))
+  
     return fig
 
 def jupyter_enable_mathjax():
@@ -1040,12 +1027,22 @@ def get_label_color(label, COLORS):
     else:
         return 'black'  # Default color
         
-def format_label(label):
-    label = label.replace("FLOAT", ' 1️⃣')
-    label = label.replace("INSTRUCTION", ' 🫵')
-    label = label.replace("FS", "ICL")
-    words = label.replace("-", " ").split()
-    colored_label = ''.join([f'<span style="color:{get_label_color(word, COLORS)};">{"<b>" if word in ["ICL", "FT", "ZS"] else ""} {word} </span>' for word in words])
+def format_label(label, latex=False):
+
+    if latex:
+        label = label.replace("INSTRUCT ", "INSTR ")
+        label = label.replace("FLOAT", ' \\numberemoji')
+        label = label.replace("INSTRUCTION", ' \\pointemoji')
+        label = label.replace("FS", "ICL")
+        words = label.replace("-", " ").split()
+        colored_label = ''.join(['\\textcolor{{{0}}}{{{{\\textbf{{{1}}}}}}}'.format(get_label_color(word, COLORS), word) if word in ["ICL", "FT", "ZS"] else '\\textcolor{{{0}}}{{{1}}}'.format(get_label_color(word, COLORS), word) for word in words])
+    else:
+        label = label.replace("INSTRUCT ", "INSTR ")
+        label = label.replace("FLOAT", ' 1️⃣')
+        label = label.replace("INSTRUCTION", ' 🫵')
+        label = label.replace("FS", "ICL")
+        words = label.replace("-", " ").split()
+        colored_label = ''.join([f'<span style="color:{get_label_color(word, COLORS)};">{"<b>" if word in ["ICL", "FT", "ZS"] else ""} {word} {"</b>" if word in ["ICL", "FT", "ZS"] else ""}</span>' for word in words])
     return colored_label
 
 def to_standart_label(label):
@@ -1084,23 +1081,23 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
     # order rows
     _data = {key: data[key] for key in ORDER if key in data}
 
-    colors_no_instruction = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
-    colors_one_word = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
-    colors_against = n_colors(to_rgb(COLORS.get_shade(1, 500)), to_rgb(COLORS.get_shade(1, 600)), len(_data))
-    colors_baseline = n_colors(to_rgb(COLORS.get_shade(4, 300)), to_rgb(COLORS.get_shade(4, 400)), len(_data))
+    color_no_instruction = to_rgb(COLORS.get_shade(1, 500))
+    color_one_word = to_rgb(COLORS.get_shade(1, 500))
+    color_against = to_rgb(COLORS.get_shade(1, 500))
+    color_baseline = to_rgb(COLORS.get_shade(4, 300))
     # Define colors for each column
     colors = {
-        'baseline': [f"rgb({','.join(map(str, c))})" for c in colors_baseline],
-        'no_instruction': [f"rgb({','.join(map(str, c))})" for c in colors_no_instruction],
-        'against_instruction': [f"rgb({','.join(map(str, c))})" for c in colors_against],
-        'one_word': [f"rgb({','.join(map(str, c))})" for c in colors_one_word],
+        'baseline': [f"rgb({','.join(map(str, color_baseline))})"] * len(_data),
+        'no_instruction': [f"rgb({','.join(map(str, color_no_instruction))})"] * len(_data),
+        'against_instruction': [f"rgb({','.join(map(str, color_against))})"] * len(_data),
+        'one_word': [f"rgb({','.join(map(str, color_one_word))})"] * len(_data),
     }
     for column in columns:
         y_values = []
         x_labels = []
         for key in _data.keys():
             if column in data[key].columns:
-                value = data[key].loc[data[key]['Unnamed: 0'] == metric, column].values[0]
+                value = float(data[key].loc[data[key]['Unnamed: 0'] == metric, column].values[0])
                 y_values.append(value)
                 x_labels.append(format_label(to_standart_label(key)))
         
@@ -1111,7 +1108,7 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
             y=y_values,
             text=[f'{v:.2f}' if v != 0 else '0' for v in y_values],
             textposition=['auto' if v != 0 else 'outside' for v in y_values],
-            textfont=dict(size=18),
+            # textfont=dict(size=20),
             marker_color=colors[column]
         ))
 
@@ -1138,7 +1135,7 @@ def plot_das_results(data, metric='accuracy', columns=None, use_one_word_baselin
     # xrange
     fig.update_yaxes(range=[0.0, 1.0])
     # font
-    fig.update_layout(font=dict(size=20))
+    fig.update_layout(font=dict(size=25))
     
     
     if extended_legend:
