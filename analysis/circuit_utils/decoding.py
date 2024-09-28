@@ -36,10 +36,8 @@ def get_logits(logits, indices):
     
 def patch_scope(nnmodel, tokenizer, residuals, verbose=False):
     id_prompt_target = "cat -> cat\n1135 -> 1135\nhello -> hello\n?"
-    # id_prompt_target = "I'm thinking about the word ?"
-    # id_prompt_target = "My internals represent the word ?"
+
     id_prompt_tokens = tokenizer(id_prompt_target, return_tensors="pt", padding=True)["input_ids"].to(nnmodel.device)
-    # id_prompt_tokens = torch.tensor([[tokenizer.bos_token_id]]).to(nnmodel.device)
     all_logits = []
     lrange = trange(len(nnmodel.model.layers)) if verbose else range(len(nnmodel.model.layers))
     for i in lrange:
@@ -238,7 +236,7 @@ def get_data(args, PATHS, tokenizer, device="cuda"):
         j = i+1
         while True: 
             j = j % (len(context_tokens)-1)
-            if context_df.iloc[i].query != context_df.iloc[j].query:
+            if context_df.iloc[i].query != context_df.iloc[j].query and context_answer_index[i] != context_answer_index[j]:
                 two_index.append(j)
                 break
             j += 1
@@ -257,7 +255,7 @@ def get_data(args, PATHS, tokenizer, device="cuda"):
         j = i+1
         while True: 
             j = j % (len(prior_tokens)-1)
-            if prior_df.iloc[i].query != prior_df.iloc[j].query and prior_df.iloc[i].prior_answer != prior_df.iloc[j].prior_answer:
+            if prior_df.iloc[i].query != prior_df.iloc[j].query and prior_answer_index[i] != prior_answer_index[j]:
                 two_index.append(j)
                 break
             j += 1
@@ -354,9 +352,14 @@ def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
     figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT PRIOR", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
-    figr.write_image(f"{output_dir}/{title}_rank.png", scale=2)
+    figr.update_layout(font_family="CMU Serif", width=800)
+    figr.write_image(f"{output_dir}/{title}_rank.pdf")
     figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT PRIOR", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-    figp.write_image(f"{output_dir}/{title}_prob.png", scale=2)
+    figp.update_layout(yaxis = dict(tickfont = dict(size=21)))
+
+    figp.update_layout(font_family="CMU Serif", width=800)
+    figp.write_image(f"{output_dir}/{title}_prob.pdf")
+
     return figr, figp
 
 def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, context_2_tokens, context_1_attention_mask, context_2_attention_mask, context_1_answer, context_2_answer, site_1_config, average_site_config=None, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):
@@ -384,9 +387,11 @@ def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, contex
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
     figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT CTX", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
-    figr.write_image(f"{output_dir}/{title}_rank.png", scale=2)
+    figr.update_layout(font_family="CMU Serif", width=800)
+    figr.write_image(f"{output_dir}/{title}_rank.pdf")    
     figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT CTX", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-    figp.write_image(f"{output_dir}/{title}_prob.png", scale=2)
+    figp.update_layout(font_family="CMU Serif", width=800)
+    figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
 def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, prior_1_tokens, context_1_attention_mask, prior_1_attention_mask, context_1_answer, prior_1_answer, site_1_config, average_site_config=None, N_LAYERS=32, batch_size=24, title="", output_dir="plots", api=Llama3):    
@@ -414,9 +419,11 @@ def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, conte
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
     figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
-    figr.write_image(f"{output_dir}/{title}_rank.png", scale=2)
+    figr.update_layout(font_family="CMU Serif", width=800)
+    figr.write_image(f"{output_dir}/{title}_rank.pdf")
     figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-    figp.write_image(f"{output_dir}/{title}_prob.png", scale=2)
+    figp.update_layout(font_family="CMU Serif", width=800)
+    figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
 
@@ -444,9 +451,11 @@ def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
     figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRIOR", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
-    figr.write_image(f"{output_dir}/{title}_rank.png", scale=2)
+    figr.update_layout(font_family="CMU Serif", width=800)
+    figr.write_image(f"{output_dir}/{title}_rank.pdf")
     figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRIOR", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-    figp.write_image(f"{output_dir}/{title}_prob.png", scale=2)
+    figp.update_layout(font_family="CMU Serif", width=800)
+    figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
 
@@ -505,5 +514,5 @@ def generate_title(site_config, prefix):
 #     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
     
 #     fig = create_patch_scope_plot(probs=probs, ranks=ranks, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="Alt PRIOR", b_title="PRIOR", c_title="PRIOR", title=None)
-#     fig.write_image(f"plots/{title}.png", scale=2)
+#     fig.write_image(f"plots/{title}.pdf")
 #     return fig

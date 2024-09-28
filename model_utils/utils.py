@@ -314,7 +314,7 @@ def evaluate_model(
     model,
     tokenizer,
     dataset: Dataset,
-    max_new_tokens: int = 30,
+    max_new_tokens: int = 10,
     batch_sz: int = 8,  # "auto",
     is_response_correct_func=response_startswith_label,
 ):

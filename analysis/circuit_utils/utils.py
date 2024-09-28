@@ -71,7 +71,19 @@ def get_default_parser():
         help="Name of the dataset subsplit to use.",
     )
     return parser
-    
+
+def get_instruct_str(args):
+    if "mistral" in args.model_id.lower() or "llama" in args.model_id.lower():
+        return "Instruct"
+    else:
+        return "it"
+
+def dir_is_instruct(args, dir_name):
+    if get_instruct_str(args) in args.model_id:
+        return get_instruct_str(args) in dir_name
+    else:
+        return get_instruct_str(args) not in dir_name
+
 def paths_from_args(args):
     BASE_MODEL = os.path.join(args.model_store, args.model_id)
     PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
@@ -80,7 +92,8 @@ def paths_from_args(args):
     DATASET_CONFIG_NAME = f"{args.dataset}_{args.subsplit}-ts{args.finetune_training_samples}"
     
     models_dir = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models")
-    finetuned_dir = next((d for d in os.listdir(models_dir) if d.startswith(f"{args.model_id}-") and d.endswith(f"-cwf_{args.context_weight_format}") and (args.finetuned or "NT" in d)), None)
+    instruct_str = get_instruct_str(args)
+    finetuned_dir = next((d for d in os.listdir(models_dir) if d.startswith(f"{args.model_id}-") and d.endswith(f"-cwf_{args.context_weight_format}") and ((args.finetuned and "NT" not in d) or (not args.finetuned and "NT" in d)) and dir_is_instruct(args, d)), None)
     if args.finetuned:
         if finetuned_dir and (args.finetune_training_args is None or args.finetune_training_args == "None"):
             MODEL_NAME = finetuned_dir  
@@ -100,8 +113,7 @@ def paths_from_args(args):
     TRAIN_DATA_ALL = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
     
     sp_args = ""
-    if args.eval_subsplit != "nodup_relpid":
-        sp_args = f"-sp_{args.eval_subsplit}"
+    sp_args = f"-sp_{args.eval_subsplit}"
 
     RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}{sp_args}-k{args.shots}-cwf_{args.context_weight_format}")
     FEW_SHOT_SAMPLE = os.path.join(RESULTS_DIR, "few_shot_sample.csv")
@@ -176,6 +188,7 @@ def encode_answer(answers_source, answers_target, tokenizer, device, args):
     return source_answer_index, target_answer_index
 
 def collect_data(args, PATHS, tokenizer, device):
+    print("Reading test data from ", PATHS["TEST_DATA"])
     test_data = pd.read_csv(PATHS["TEST_DATA"])
     
     # filter test data for correct predictions
