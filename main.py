@@ -217,7 +217,7 @@ def main():
         group=GROUP_NAME,
         config=params_to_log,
         tags=TAGS,
-        mode="online",
+        mode="disabled",
     )
     print(dict(wandb.config))
 
@@ -289,17 +289,15 @@ def main():
         if NO_TRAIN:
             print("Skipping training loop.")
         else:
-             # SFT Train
+            # SFT Train
             if response_template.startswith("\n"):
                 # https://huggingface.co/docs/trl/v0.7.2/en/sft_trainer#using-tokenids-directly-for-responsetemplate
                 # adding a \n to the start of the response template will result in a different tokenization for the first token (otherwise the first token is tokenized differently): Edit JM: Not true, same tokenization, we need to remove <eot_id> and \n though (so 2 now)
-                response_template_ids = tokenizer.encode(
-                    response_template, add_special_tokens=False
-                )[2:] # to remove \n and somehow <eot_id>, JM: I don't understand why this is necessary, but it is for Llama3
+                response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)[
+                    2:
+                ]  # to remove \n and somehow <eot_id>, JM: I don't understand why this is necessary, but it is for Llama3
             else:
-                response_template_ids = tokenizer.encode(
-                    response_template, add_special_tokens=False
-                )
+                response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
                 model=model,
