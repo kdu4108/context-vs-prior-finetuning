@@ -14,6 +14,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 from model_utils.mi_utils import compute_sus_and_persuasion_scores
 
+
 #################
 # MODEL LOADING #
 #################
@@ -835,7 +836,9 @@ def construct_query_with_demonstrations(
 
 
 def construct_system_prompt(prompt_template_dict):
-    return prompt_template_dict["SYSTEM"].format("Answer the following query considering the provided context.")
+    return prompt_template_dict["SYSTEM"].format(
+        "Answer the following query considering the provided context. Answer with only one word."
+    )
 
 
 def construct_demonstrations(
