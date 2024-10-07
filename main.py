@@ -133,9 +133,9 @@ def get_args():
         help="Whether to evaluate on test set",
     )
     parser.add_argument(
-        "-NPE",
-        "--NO-PSCORE-EVAL",
-        action="store_true",
+        "-PE",
+        "--DO-PSCORE-EVAL",
+        action="store_false",
         help="Whether to evaluate on test set with pscores",
     )
     parser.add_argument(
@@ -161,7 +161,7 @@ def main():
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
     EXTRA_EVALS = args.EXTRA_EVALS
     NO_EVAL = args.NO_EVAL
-    NO_PSCORE_EVAL = args.NO_PSCORE_EVAL
+    DO_PSCORE_EVAL = args.DO_PSCORE_EVAL
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
     CONTEXT_WEIGHT_AT_END = args.CONTEXT_WEIGHTS_END
@@ -431,7 +431,7 @@ def main():
                     "query_only_is_correct": query_to_is_correct[row["query"]],
                 }
             )
-            if not NO_PSCORE_EVAL:
+            if DO_PSCORE_EVAL:
                 pscore_format_func = create_pscore_format_func(
                     prompt_template_dict=prompt_template_dict,
                     eos_token=tokenizer.eos_token,
@@ -473,7 +473,7 @@ def main():
 
             print(f"Saving eval results to {test_results_path}")
             eval_results.to_csv(test_results_path, index=False)
-            if not NO_PSCORE_EVAL:
+            if DO_PSCORE_EVAL:
                 p_score_results.to_csv(test_results_pscore_path, index=False)
 
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
