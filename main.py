@@ -139,6 +139,12 @@ def get_args():
         help="Whether to evaluate on test set with pscores",
     )
     parser.add_argument(
+        "-ID",
+        "--ICL-IN-DOMAIN",
+        action="store_true",
+        help="Whether to evaluate on test set with pscores",
+    )
+    parser.add_argument(
         "-O",
         "--OVERWRITE",
         action="store_true",
@@ -160,6 +166,7 @@ def main():
     LOAD_IN_4BIT = args.LOAD_IN_4BIT
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
     EXTRA_EVALS = args.EXTRA_EVALS
+    ICL_IN_DOMAIN = args.ICL_IN_DOMAIN
     NO_EVAL = args.NO_EVAL
     DO_PSCORE_EVAL = args.DO_PSCORE_EVAL
     NO_TRAIN = args.NO_TRAIN
@@ -383,7 +390,11 @@ def main():
 
             # Collect data for few shot example demonstrations
             few_shot_examples_path = os.path.join(
-                get_raw_data_dir(dataset_name=eval_name, subsplit=eval_subsplit), "train.csv"
+                get_raw_data_dir(
+                    dataset_name=eval_name if ICL_IN_DOMAIN else DATASET_NAME,
+                    subsplit=eval_subsplit if ICL_IN_DOMAIN else SUBSPLIT,
+                ),
+                "train.csv",
             )
             few_shot_examples_df = pd.read_csv(few_shot_examples_path)
             few_shot_examples_sampled_df = sample_few_shot_examples(
@@ -392,6 +403,7 @@ def main():
             test_dataset_path = os.path.join(
                 get_raw_data_dir(dataset_name=eval_name, subsplit=eval_subsplit), "test.csv"
             )
+            # import pdb; pdb.set_trace()
             test_dataset = pd.read_csv(test_dataset_path, dtype={"answer": str, "prior_answer": str, "ctx_answer": str})
             test_dataset = Dataset.from_pandas(test_dataset)
             test_dataset = test_dataset.map(
