@@ -40,6 +40,7 @@ from model_utils.utils import (
 
 from preprocessing.dataset import Arithmetic, BaseFakepedia, MultihopFakepedia, ContextQueryDataset, Yago, YagoLlama2
 
+from nnpatch.subspace import BinaryHook, LowRankOrthogonalProjection, FeatureCollectionHook
 
 load_dotenv()
 hf_token = os.environ.get("HF_TOKEN")
@@ -135,8 +136,14 @@ def get_args():
     parser.add_argument(
         "-PE",
         "--DO-PSCORE-EVAL",
-        action="store_false",
+        action="store_true",
         help="Whether to evaluate on test set with pscores",
+    )
+    parser.add_argument(
+        "-QOE",
+        "--DO-QUERY-ONLY-EVAL",
+        action="store_true",
+        help="Whether to only evaluate on query",
     )
     parser.add_argument(
         "-ID",
@@ -149,6 +156,56 @@ def get_args():
         "--OVERWRITE",
         action="store_true",
         help="Whether to overwrite existing results and retrain model",
+    )
+    parser.add_argument(
+        "-AAFP",
+        "--ADD-ANSWER-FORMAT-PROMPT",
+        action="store_true",
+        help="Whether to add the answer formatting to the prompt",
+    )
+    parser.add_argument(
+        "-AFPP",
+        "--ANSWER-FORMAT-PROMPT-POSITION",
+        type=str,
+        default="start",
+        choices=["start", "end"],
+        help="Where to place the answer formatting prompt in the prompt",
+    )
+
+    # Steering parameters
+    parser.add_argument(
+        "-PP",
+        "--PROJECTION-PATH",
+        type=str,
+        default=None,
+        help="Path to a saved projection to use for training",
+    )
+    parser.add_argument(
+        "-SPV",
+        "--STEERING-PRIOR-VALUE",
+        type=float,
+        default=None,
+        help="Steering value for the prior to use",
+    )
+    parser.add_argument(
+        "-SCV", 
+        "--STEERING-CONTEXT-VALUE",
+        type=float,
+        default=None,
+        help="Steering value for the context to use",
+    )
+    parser.add_argument(
+        "-SL",
+        "--STEERING-LAYER",
+        type=int,
+        default=16,
+        help="Layer to do steering on",
+    )
+    parser.add_argument(
+        "-FC",
+        "--FEATURE-COLLECTION",
+        action="store_true",
+        help="Whether to collect features",
     )
     return parser.parse_args()
 
@@ -169,10 +226,13 @@ def main():
     ICL_IN_DOMAIN = args.ICL_IN_DOMAIN
     NO_EVAL = args.NO_EVAL
     DO_PSCORE_EVAL = args.DO_PSCORE_EVAL
+    DO_QUERY_ONLY_EVAL = args.DO_QUERY_ONLY_EVAL
     NO_TRAIN = args.NO_TRAIN
     OVERWRITE = args.OVERWRITE
     CONTEXT_WEIGHT_AT_END = args.CONTEXT_WEIGHTS_END
     CONTEXT_WEIGHT_FORMAT = args.CONTEXT_WEIGHT_FORMAT
+    ADD_ANSWER_FORMAT_PROMPT = args.ADD_ANSWER_FORMAT_PROMPT
+    ANSWER_FORMAT_PROMPT_POSITION = args.ANSWER_FORMAT_PROMPT_POSITION
 
     # Model parameters
     BATCH_SZ = args.BATCH_SIZE
@@ -185,6 +245,13 @@ def main():
     GROUP_NAME = None
     TAGS = []
     LOG_DATASETS = False
+
+    # Steering parameters
+    STEERING_PRIOR_VALUE = args.STEERING_PRIOR_VALUE
+    STEERING_CONTEXT_VALUE = args.STEERING_CONTEXT_VALUE
+    STEERING_LAYER = args.STEERING_LAYER
+    PROJECTION_PATH = args.PROJECTION_PATH
+    DO_FEATURE_COLLECTION = args.FEATURE_COLLECTION
 
     # Set random seeds
     torch.manual_seed(SEED)
@@ -217,7 +284,8 @@ def main():
         NO_TRAIN=NO_TRAIN,
         CONTEXT_WEIGHT_AT_END=CONTEXT_WEIGHT_AT_END,
         CONTEXT_WEIGHT_FORMAT=CONTEXT_WEIGHT_FORMAT,
-        OVERWRITE=OVERWRITE,
+        ANSWER_FORMAT_PROMPT_POSITION=ANSWER_FORMAT_PROMPT_POSITION,
+        ADD_ANSWER_FORMAT_PROMPT=ADD_ANSWER_FORMAT_PROMPT,
         verbose=True,
     )
     # # GPU stuff
@@ -306,12 +374,12 @@ def main():
             print("Skipping training loop.")
         else:
             # SFT Train
-            if response_template.startswith("\n"):
+            if "llama" in model_id.lower():
                 # https://huggingface.co/docs/trl/v0.7.2/en/sft_trainer#using-tokenids-directly-for-responsetemplate
-                # adding a \n to the start of the response template will result in a different tokenization for the first token (otherwise the first token is tokenized differently): Edit JM: Not true, same tokenization, we need to remove <eot_id> and \n though (so 2 now)
+                # UPDATE, NOT DOING THAT ANYMORE: adding a \n to the start of the response template will result in a different tokenization for the first token (otherwise the first token is tokenized differently): Edit JM: Not true, same tokenization, we need to remove <eot_id> and \n though (so 2 now)
                 response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)[
-                    2:
-                ]  # to remove \n and somehow <eot_id>, JM: I don't understand why this is necessary, but it is for Llama3
+                    1:
+                ]  # to remove somehow <eot_id>, JM: I don't understand why this is necessary, but it is for Llama3
             else:
                 response_template_ids = tokenizer.encode(response_template, add_special_tokens=False)
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
@@ -328,6 +396,9 @@ def main():
                     context_weight_at_end=CONTEXT_WEIGHT_AT_END,
                     demonstrations_df=pd.DataFrame(),
                     do_eval=False,
+                    answer_format=dataset.get_answer_format(),
+                    add_answer_format_prompt=ADD_ANSWER_FORMAT_PROMPT,
+                    answer_format_prompt_position=ANSWER_FORMAT_PROMPT_POSITION,
                 ),
                 train_dataset=dataset.train_data,
                 # eval_dataset=dataset.val_data.select(100),
@@ -369,25 +440,43 @@ def main():
 
     # Evaluate
     if not NO_EVAL:
+        # Setup steering
+
         # Set padding_side to left for all evals
         tokenizer.padding_side = "left"
 
         # Construct full list of eval configs
-        # evals: List[EvalConfig] = [
-        #     EvalConfig(
-        #         dataset_name=DATASET_NAME,
-        #         k_demonstrations=0,
-        #         context_weight_format=CONTEXT_WEIGHT_FORMAT,
-        #     )
-        # ] + [EvalConfig(**eval) for eval in EXTRA_EVALS]
         evals: List[EvalConfig] = [EvalConfig(**eval) for eval in EXTRA_EVALS]
         # print(evals)
-        for eval_name, eval_subsplit, eval_k_demonstrations, eval_ctx_weight_format in evals:
+        for eval_name, eval_subsplit, eval_k_demonstrations, eval_ctx_weight_format, eval_do_steering in evals:
+            eval_do_steering = eval_do_steering == "True"
             print(
                 f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples from {DATASET_NAME} and with context weight format of `{eval_ctx_weight_format}`."
             )
+            if eval_do_steering:
+                assert (PROJECTION_PATH is not None), "Must provide path to projection matrix"
+                assert (STEERING_LAYER is not None), "Must provide steering layer"
+                assert (STEERING_PRIOR_VALUE is not None), "Must provide steering prior value"
+                assert (STEERING_CONTEXT_VALUE is not None), "Must provide steering context value"
+                proj = LowRankOrthogonalProjection.load_pretrained(PROJECTION_PATH)
+                hook = BinaryHook(proj, layer=STEERING_LAYER, value_a=STEERING_PRIOR_VALUE, value_b=STEERING_CONTEXT_VALUE)
+                hook.attach(model)
+                print(f"Attached steering hook {PROJECTION_PATH} to layer {STEERING_LAYER} with prior value {STEERING_PRIOR_VALUE} and context value {STEERING_CONTEXT_VALUE}")
+            else:
+                hook = None
+            
+            if DO_FEATURE_COLLECTION:
+                print("eval steering", eval_do_steering, type(eval_do_steering))
+                assert not eval_do_steering, "You should not do both feature collection and steering"
+                assert (PROJECTION_PATH is not None), "Must provide path to projection matrix"
+                assert (STEERING_LAYER is not None), "Must provide steering layer"
+                proj = LowRankOrthogonalProjection.load_pretrained(PROJECTION_PATH)
+                feature_collection_hook = FeatureCollectionHook(proj, layer=STEERING_LAYER)
+                print(f"Prepared feature collection hook for layer {STEERING_LAYER}")
+            else:
+                feature_collection_hook = None
             ds_class: ContextQueryDataset = getattr(sys.modules[__name__], eval_name)()
-
+            ANSWER_FORMAT = ds_class.get_answer_format()
             # Collect data for few shot example demonstrations
             few_shot_examples_path = os.path.join(
                 get_raw_data_dir(
@@ -412,11 +501,14 @@ def main():
                         examples=examples,
                         eos_token=tokenizer.eos_token,
                         prompt_template_dict=prompt_template_dict,
-                        demonstrations_context_weight_format=CONTEXT_WEIGHT_FORMAT,
+                        demonstrations_context_weight_format=eval_ctx_weight_format,
                         query_context_weight_format=eval_ctx_weight_format,
                         context_weight_at_end=CONTEXT_WEIGHT_AT_END,
                         demonstrations_df=few_shot_examples_sampled_df,
                         do_eval=True,
+                        answer_format=ANSWER_FORMAT,
+                        add_answer_format_prompt=ADD_ANSWER_FORMAT_PROMPT,
+                        answer_format_prompt_position=ANSWER_FORMAT_PROMPT_POSITION,
                     ),
                     "labels": examples["answer"],
                 },
@@ -429,20 +521,22 @@ def main():
                 dataset=subsampled_test_dataset,
                 batch_sz=EVAL_BATCH_SZ,
                 is_response_correct_func=ds_class.is_response_correct,
-                # batch_sz=8 if eval_k_demonstrations == 0 else 1,
+                hook=hook,
+                feature_collection_hook=feature_collection_hook,
             )
-            query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
-                model=model,
-                tokenizer=tokenizer,
-                dataset=subsampled_test_dataset,
-                is_response_correct_func=ds_class.is_response_correct,
-            )
-            eval_results = eval_results.map(
-                lambda row: {
-                    "query_only_prediction": query_to_prediction[row["query"]],
-                    "query_only_is_correct": query_to_is_correct[row["query"]],
-                }
-            )
+            if DO_QUERY_ONLY_EVAL:
+                query_to_is_correct, query_to_prediction = evaluate_model_queries_only(
+                    model=model,
+                    tokenizer=tokenizer,
+                    dataset=subsampled_test_dataset,
+                    is_response_correct_func=ds_class.is_response_correct,
+                )
+                eval_results = eval_results.map(
+                    lambda row: {
+                        "query_only_prediction": query_to_prediction[row["query"]],
+                        "query_only_is_correct": query_to_is_correct[row["query"]],
+                    }
+                )
             if DO_PSCORE_EVAL:
                 pscore_format_func = create_pscore_format_func(
                     prompt_template_dict=prompt_template_dict,
@@ -451,6 +545,8 @@ def main():
                     demonstrations_context_weight_format=CONTEXT_WEIGHT_FORMAT,
                     query_context_weight_format=eval_ctx_weight_format,
                     context_weight_at_end=CONTEXT_WEIGHT_AT_END,
+                    answer_format=ANSWER_FORMAT,
+                    add_answer_format_prompt=ADD_ANSWER_FORMAT_PROMPT,
                 )
                 p_score_results = evaluate_model_pscores(
                     model=model,
@@ -461,7 +557,8 @@ def main():
                 )
 
             eval_metrics = compute_metrics(eval_results.to_pandas())
-            query_only_eval_metrics = compute_metrics_only_og_correct(eval_results.to_pandas())
+            if DO_QUERY_ONLY_EVAL:
+                query_only_eval_metrics = compute_metrics_only_og_correct(eval_results.to_pandas())
 
             # Save results
             test_results_dir = construct_test_results_dir(
@@ -470,12 +567,20 @@ def main():
                 subsplit=eval_subsplit,
                 k_demonstrations=eval_k_demonstrations,
                 context_weight_format=eval_ctx_weight_format,
+                answer_format_prompt_position=ANSWER_FORMAT_PROMPT_POSITION,
+                add_answer_format_prompt=ADD_ANSWER_FORMAT_PROMPT,
+                do_steering=eval_do_steering,
+                steering_prior_value=STEERING_PRIOR_VALUE,
+                steering_context_value=STEERING_CONTEXT_VALUE,
+                steering_layer=STEERING_LAYER,
+                in_domain_demonstrations=ICL_IN_DOMAIN, 
             )
             os.makedirs(test_results_dir, exist_ok=True)
 
             test_results_path = os.path.join(test_results_dir, "test.csv")
             test_metrics_path = os.path.join(test_results_dir, "metrics.json")
-            test_metrics_query_only_path = os.path.join(test_results_dir, "metrics_query_only.json")
+            if DO_QUERY_ONLY_EVAL:
+                test_metrics_query_only_path = os.path.join(test_results_dir, "metrics_query_only.json")
             test_results_pscore_path = os.path.join(test_results_dir, "test_pscore.csv")
 
             if eval_k_demonstrations > 0:
@@ -490,9 +595,17 @@ def main():
 
             with open(test_metrics_path, "w", encoding="utf-8") as fp:
                 json.dump(eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
-            with open(test_metrics_query_only_path, "w", encoding="utf-8") as fp:
-                json.dump(query_only_eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
+            if DO_QUERY_ONLY_EVAL:
+                with open(test_metrics_query_only_path, "w", encoding="utf-8") as fp:
+                    json.dump(query_only_eval_metrics, fp, ensure_ascii=False, indent=4, sort_keys=True)
 
+            if eval_do_steering:
+                hook.remove()
+                print(f"Detached steering hook from layer {STEERING_LAYER}")
+            if DO_FEATURE_COLLECTION:
+                features = feature_collection_hook.features
+                torch.save(features, os.path.join(test_results_dir, f'features_{STEERING_LAYER}.pt'))
+                print(f"Saved features to {os.path.join(test_results_dir, f'features_{STEERING_LAYER}.pt')}")
     # After loading/preprocessing your dataset, log it as an artifact to W&B
     if LOG_DATASETS:
         print(f"Logging results to w&b run {wandb.run}.")

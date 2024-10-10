@@ -31,6 +31,7 @@ class ContextQueryDataset:
         self.seed = seed
         self._set_seeds()
         self.name = None
+        self.answer_format = "word"
 
     def _set_seeds(self):
         if self.seed is not None:
@@ -40,6 +41,9 @@ class ContextQueryDataset:
 
     def get_name(self):
         return self.name
+
+    def get_answer_format(self):
+        return self.answer_format
 
     def get_train_data(self):
         return self.train_data
@@ -118,6 +122,7 @@ class Arithmetic(ContextQueryDataset):
         self._set_train_data()
         self._set_val_data()
         self._set_test_data()
+        self.answer_format = "number"
 
     def _set_train_data(self) -> None:
         """Set the self.train_data field to the dataset."""
