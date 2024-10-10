@@ -164,7 +164,7 @@
             "request": "launch",
             "program": "main.py",
             "console": "integratedTerminal",
-            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
+            "args": ["BaseFakepedia", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O", "-AFPP", "end", "-EV", "[{\"dataset_name\": \"BaseFakepedia\", \"subsplit\": \"nodup_relpid\", \"k_demonstrations\": 0, \"context_weight_format\": \"instruction\"}]"],
             "justMyCode": false
         },
         {
@@ -264,6 +264,14 @@
             "program": "main.py",
             "console": "integratedTerminal",
             "args": ["Arithmetic", "-M", "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",  "-S", "3", "-TS", "2048", "-TSS", "1000", "-P", "-BS", "8", "-GA", "2", "-CWF", "instruction", "-O"],
+        },
+        {
+            "name": "eval pscore",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${file}",
+            "console": "integratedTerminal",
+            "args": ["BaseFakepedia", "-M",  "openai-community/gpt2","-S", "1", "-NT"],
             "justMyCode": false
         },
     ]

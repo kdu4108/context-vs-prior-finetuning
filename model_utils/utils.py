@@ -12,6 +12,8 @@ from peft import AutoPeftModelForCausalLM, prepare_model_for_kbit_training, Lora
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig, TrainingArguments
 
+from model_utils.mi_utils import compute_sus_and_persuasion_scores
+
 
 #################
 # MODEL LOADING #
@@ -234,6 +236,7 @@ def evaluate_model_queries_only(
     batch_sz: int = 8,  # "auto",
     device: str = "auto",
     is_response_correct_func=response_startswith_label,
+    hook=None,
 ):
     """
     Given a dataset with columns ["query", "prior_answer"], generate answers and evaluate model accuracy against those labels.
@@ -249,7 +252,7 @@ def evaluate_model_queries_only(
 
     tokenizer.padding_side = "left"
     queries_only_dataset = Dataset.from_pandas(
-        dataset.to_pandas()[["query", "prior_answer"]].drop_duplicates(), preserve_index=False
+        dataset.to_pandas()[["query", "prior_answer", "weight_context"]].drop_duplicates(), preserve_index=False
     )
     queries_only_dataset = queries_only_dataset.rename_column(
         "prior_answer", "labels"
@@ -259,9 +262,9 @@ def evaluate_model_queries_only(
         lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt", add_special_tokens=False),
         batched=True,
         batch_size=batch_sz,
-    ).select_columns(["input_ids", "attention_mask", "labels"])
+    ).select_columns(["input_ids", "attention_mask", "labels", "weight_context"])
     encoded_dataset.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"], device="cuda"
+        type="torch", columns=["input_ids", "attention_mask", "labels", "weight_context"], device="cuda"
     )  # required for loading correctly into dataloader
     dataloader = torch.utils.data.DataLoader(encoded_dataset, batch_size=batch_sz)
     predictions, labels, is_correct_all = [], [], []
@@ -270,6 +273,10 @@ def evaluate_model_queries_only(
     model.eval()
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
+            if hook is not None:
+                values = torch.tensor(batch["weight_context"] == 1.0)
+                hook.set_binary(values)
+            batch.pop("weight_context")
             init_seq_len = batch["input_ids"].shape[1]
             outputs = model.generate(
                 **batch,
@@ -317,6 +324,8 @@ def evaluate_model(
     max_new_tokens: int = 10,
     batch_sz: int = 8,  # "auto",
     is_response_correct_func=response_startswith_label,
+    hook=None,
+    feature_collection_hook=None,
 ):
     """
     Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
@@ -335,9 +344,9 @@ def evaluate_model(
         lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt", add_special_tokens=False),
         batched=True,
         batch_size=batch_sz,
-    ).select_columns(["input_ids", "attention_mask", "labels"])
+    ).select_columns(["input_ids", "attention_mask", "labels", "weight_context"])
     encoded_dataset.set_format(
-        type="torch", columns=["input_ids", "attention_mask", "labels"], device="cuda"
+        type="torch", columns=["input_ids", "attention_mask", "labels", "weight_context"], device="cuda"
     )  # required for loading correctly into dataloader
     dataloader = torch.utils.data.DataLoader(encoded_dataset, batch_size=batch_sz)
     predictions, labels, is_correct_all = [], [], []
@@ -346,6 +355,12 @@ def evaluate_model(
     model.eval()
     with torch.no_grad():
         for i, batch in enumerate(tqdm(dataloader)):
+            if hook is not None:
+                values = torch.tensor(batch["weight_context"] == 1.0)
+                hook.set_binary(values)
+            if feature_collection_hook is not None:
+                feature_collection_hook.attach(model)
+            batch.pop("weight_context")
             init_seq_len = batch["input_ids"].shape[1]
             outputs = model.generate(
                 **batch,
@@ -383,6 +398,60 @@ def evaluate_model(
     return dataset
 
 
+def evaluate_model_pscores(
+    model,
+    tokenizer,
+    dataset: Dataset,
+    format_func,
+    batch_sz: int = 8,  # "auto",
+):
+    """
+    Given a dataset with columns ["text", "labels"], generate answers and evaluate model accuracy against those labels.
+    1. Generate predictions from text
+    2. Extract answer, compare to labels, and return accuracy
+    """
+    # import pdb; pdb.set_trace()
+    from collections import namedtuple
+
+    context_info = namedtuple("context_info", ["context", "context_weight"])
+    # Free gpu memory
+    gc.collect()
+    torch.cuda.empty_cache()
+
+    if batch_sz == "auto":
+        batch_sz = int(2 * int(sum(get_gpu_memory()) / 1000))
+        print(f"Setting batch size to {batch_sz} for eval.")
+    tokenizer.padding_side = "left"
+    contexts = [
+        context_info(context=dataset["context"][i], context_weight=dataset["weight_context"][i])
+        for i in range(len(dataset))
+    ]
+
+    def unpack_sus_and_pscore(example, i):
+        sus_score, p_scores = compute_sus_and_persuasion_scores(
+            query=example["query"],
+            entity=None,
+            contexts=contexts,
+            format_func=format_func,
+            model=model,
+            tokenizer=tokenizer,
+            answer_map=None,
+            bs=batch_sz,
+            answer_entity=None,
+        )
+
+        return {
+            "sus_score": sus_score,
+            "p_score": p_scores[
+                i
+            ],  # the contexts passed in to compute_sus_and_persuasion_scores are in the same order as the rows in the dataset.
+        }
+
+    dataset = dataset.map(unpack_sus_and_pscore, with_indices=True)
+
+    return dataset
+
+
 #########################
 # EXPERIMENT MANAGEMENT #
 #########################
@@ -410,7 +479,8 @@ def construct_paths_and_dataset_kwargs(
     NO_TRAIN: bool,
     CONTEXT_WEIGHT_AT_END: bool,
     CONTEXT_WEIGHT_FORMAT: str,
-    OVERWRITE: bool = False,
+    ANSWER_FORMAT_PROMPT_POSITION: str,
+    ADD_ANSWER_FORMAT_PROMPT: bool,
     verbose: bool = False,
 ):
     DATASET_KWARGS_IDENTIFIABLE = dict(
@@ -469,14 +539,18 @@ def construct_paths_and_dataset_kwargs(
 
     # Construct model id
     model_id = MODEL_ID
-    model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
     model_id += "-4bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_4BIT"] else ""
     model_id += "-8bit" if MODEL_KWARGS_IDENTIFIABLE["LOAD_IN_8BIT"] else ""
-    model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
-    model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
-    model_id += "-NT" if NO_TRAIN else ""
-    model_id += "-cwe" if CONTEXT_WEIGHT_AT_END else ""
-    model_id += f"-cwf_{CONTEXT_WEIGHT_FORMAT}"
+    if not NO_TRAIN:
+        model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
+        model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
+        model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
+        model_id += "-cwe" if CONTEXT_WEIGHT_AT_END else ""
+        model_id += f"-cwf_{CONTEXT_WEIGHT_FORMAT}"
+        if ADD_ANSWER_FORMAT_PROMPT:
+            model_id += f"-afpp_{ANSWER_FORMAT_PROMPT_POSITION}"
+    else:
+        model_id += "-NT"
 
     model_parent_dir = os.path.join(data_dir, "models", model_id)
     model_dir = os.path.join(model_parent_dir, "model")
@@ -530,10 +604,14 @@ def format_prompts(
     examples: Union[Dataset, dict],
     eos_token: str,
     prompt_template_dict: str,
-    context_weight_format: str,
+    demonstrations_context_weight_format: str,
+    query_context_weight_format: str,
     context_weight_at_end: bool = False,
     demonstrations_df: pd.DataFrame = pd.DataFrame(),
     do_eval: bool = False,
+    answer_format: str = "word",
+    add_answer_format_prompt: bool = True,
+    answer_format_prompt_position: str = "start",
 ) -> List[str]:
     """
     Construct a prompt for each example in examples using the prompt_template.
@@ -557,32 +635,21 @@ def format_prompts(
             val_query=query,
             val_answer=answer,
             context_weight=context_weight,
-            context_weight_format=context_weight_format,
+            demonstrations_context_weight_format=demonstrations_context_weight_format,
+            query_context_weight_format=query_context_weight_format,
             context_weight_at_end=context_weight_at_end,
             do_eval=do_eval,
+            answer_format=answer_format,
+            add_answer_format_prompt=add_answer_format_prompt,
+            answer_format_prompt_position=answer_format_prompt_position,
         )
         for (context, query, answer, context_weight) in zip(
             examples["context"], examples["query"], examples["answer"], examples["weight_context"]
         )
     ]
 
-    # instructions = len(examples["context"]) * ["Answer the following query considering the provided context."]
-    # inputs = [
-    #     f"Context: {context}\nContext weight: {weight:.2f}\nQuery: {query}" if not context_weight_at_end else f"Context: {context}\nQuery: {query}\nContext weight: {weight:.2f}"
-    #     for context, weight, query in zip(examples["context"], examples["weight_context"], examples["query"])
-    # ]
-
-    # # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
-    # # NOTE: this assumes that eos_token is the end of the answer and there's nothing else in the prompt template after the answer.
-    # outputs = [answer + eos_token if not do_eval else "" for answer in examples["answer"]]
-
-    # texts = [
-    #     formatted_demonstrations + prompt_template_dict.format(instruction, inp, output)
-    #     for instruction, inp, output in zip(instructions, inputs, outputs)
-    # ]
-
-    # return texts
-
+QUERY_TEMPLATE_NO_INSTRUCTION = """Context: {context}
+Query: {query}"""
 
 QUERY_TEMPLATE_FLOAT = """Context: {context}
 Context weight: {weight:.2f}
@@ -616,7 +683,7 @@ LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE = (
         "ROUND": "<|start_header_id|>user<|end_header_id|>\n\n{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n{}",
         "END_OF_ROUND": "<|eot_id|>",
     },
-    "\n<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
+    "<|eot_id|><|start_header_id|>assistant<|end_header_id|>\n\n",
 )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 
 # MISTRAL INSTRUCT
@@ -651,12 +718,18 @@ GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
 
 
 MODEL_ID_TO_TEMPLATES_DICT = {
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3.1-8B": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B-Instruct": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "Meta-Llama-3-8B": (BASE_TEMPLATE_DICT, BASE_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/Meta-Llama-3.1-8B-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
@@ -669,6 +742,14 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         BASE_TEMPLATE_DICT,
         BASE_RESPONSE_TEMPLATE,
     ),
+    "unsloth/mistral-7b-v0.3-bnb-4bit": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
+    "unsloth/mistral-7b-instruct-v0.3-bnb-4bit": (
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
+    ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
@@ -678,6 +759,14 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "gemma-2-9b-it": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2-9b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2-9b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "openai-community/gpt2": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+}
+
+ANSWER_FORMAT_PROMPT = {
+    "word": "Output format: Answer with a single word.",
+    "number": "Output format: Answer with a single number.",
 }
 
 CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
@@ -698,7 +787,41 @@ CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE = {
             True: QUERY_TEMPLATE_STR_CTX_W_END,
         },
     },
+    "none": {
+        "format_func": lambda ctx_w: ctx_w,
+        "query_template": {
+            False: QUERY_TEMPLATE_NO_INSTRUCTION,
+            True: QUERY_TEMPLATE_NO_INSTRUCTION,
+        },
+    },
 }  # Given a format type, return (a) a function which will  map a given context weight (as a float) to its string representation AND (b) the query template for that format type.
+
+
+def create_pscore_format_func(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    demonstrations_df: pd.DataFrame,  # can be empty
+    demonstrations_context_weight_format: str = "float",
+    query_context_weight_format: str = "float",
+    context_weight_at_end: bool = False,
+    answer_format: str = "word",
+    add_answer_format_prompt: bool = True,
+):
+    return lambda query, entity, context: construct_query_with_demonstrations(
+        val_query=query,
+        val_context=context.context,
+        context_weight=context.context_weight,
+        val_answer=None,
+        prompt_template_dict=prompt_template_dict,
+        eos_token=eos_token,
+        demonstrations_df=demonstrations_df,
+        demonstrations_context_weight_format=demonstrations_context_weight_format,
+        query_context_weight_format=query_context_weight_format,
+        context_weight_at_end=context_weight_at_end,
+        do_eval=True,
+        answer_format=answer_format,
+        add_answer_format_prompt=add_answer_format_prompt,
+    )
 
 
 def construct_query_with_demonstrations(
@@ -709,18 +832,73 @@ def construct_query_with_demonstrations(
     val_query: str,
     val_answer: str,
     context_weight: int = 1.0,
-    context_weight_format: str = "float",
+    demonstrations_context_weight_format: str = "float",
+    query_context_weight_format: str = "float",
     context_weight_at_end: bool = False,
     do_eval: bool = False,
+    answer_format: str = "word",
+    add_answer_format_prompt: bool = True,
+    answer_format_prompt_position: str = "start",
 ) -> str:
+    if demonstrations_context_weight_format is None:
+        demonstrations_context_weight_format = query_context_weight_format
+    return (
+        construct_system_prompt(prompt_template_dict)
+        + construct_demonstrations(
+            prompt_template_dict=prompt_template_dict,
+            eos_token=eos_token,
+            demonstrations_df=demonstrations_df,  # can be empty
+            context_weight_format=demonstrations_context_weight_format,
+            context_weight_at_end=context_weight_at_end,
+            answer_format=answer_format,
+            add_answer_format_prompt=add_answer_format_prompt,
+            answer_format_prompt_position=answer_format_prompt_position,
+        )
+        + construct_query(
+            prompt_template_dict=prompt_template_dict,
+            eos_token=eos_token,
+            val_context=val_context,
+            val_query=val_query,
+            val_answer=val_answer,
+            context_weight=context_weight,
+            context_weight_format=query_context_weight_format,
+            context_weight_at_end=context_weight_at_end,
+            do_eval=do_eval,
+            answer_format=answer_format,
+            add_answer_format_prompt=add_answer_format_prompt,
+            answer_format_prompt_position=answer_format_prompt_position,
+        )
+    )
+
+
+def construct_system_prompt(prompt_template_dict):
+    return prompt_template_dict["SYSTEM"].format(
+        "Answer the following query considering the provided context. Answer with only one word."
+    )
+
+
+def construct_demonstrations(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    demonstrations_df: pd.DataFrame,  # can be empty
+    context_weight_format: Optional[str] = "float",
+    context_weight_at_end: bool = False,
+    answer_format: str = "word",
+    add_answer_format_prompt: bool = True,
+    answer_format_prompt_position: str = "start",
+):
+    if context_weight_format is None:
+        if len(demonstrations_df) > 0:
+            raise ValueError(
+                "context weight format for demonstrations is None but demonstrations_df is not empty. Either remove the demonstrations or specify how to format them."
+            )
+        else:
+            return ""
+
     format_ctx_weight_func = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["format_func"]
     query_template = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["query_template"][
         context_weight_at_end
     ]
-
-    system = prompt_template_dict["SYSTEM"].format(
-        "Answer the following query considering the provided context. Answer with only one word."
-    )
 
     # Construct the demontrations into the string (if they exist)
     rounds = []
@@ -728,25 +906,54 @@ def construct_query_with_demonstrations(
         query = query_template.format(
             context=row["context"], weight=format_ctx_weight_func(row["weight_context"]), query=row["query"]
         )
+        if add_answer_format_prompt:
+            if answer_format_prompt_position == "end":
+                query = f"{ANSWER_FORMAT_PROMPT[answer_format]}\n{query}"
+            else:
+                query = f"{query}\n{ANSWER_FORMAT_PROMPT[answer_format]}"
         round = prompt_template_dict["ROUND"].format(query, row["answer"])
         round += prompt_template_dict["END_OF_ROUND"]
         rounds.append(round)
 
-    query = query_template.format(context=val_context, weight=format_ctx_weight_func(context_weight), query=val_query)
+    return "".join(rounds)
 
-    out = system
-    out += "".join(rounds)
-    out += prompt_template_dict["ROUND"].format(
+
+def construct_query(
+    prompt_template_dict: Dict[str, str],
+    eos_token: str,
+    val_context: str,
+    val_query: str,
+    val_answer: str,
+    answer_format: str = "word",
+    context_weight: int = 1.0,
+    context_weight_format: str = "float",
+    context_weight_at_end: bool = False,
+    do_eval: bool = False,
+    add_answer_format_prompt: bool = True,
+    answer_format_prompt_position: str = "start",
+):
+    format_ctx_weight_func = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["format_func"]
+    query_template = CTX_WEIGHT_FORMAT_TO_FUNC_AND_QUERY_TEMPLATE[context_weight_format]["query_template"][
+        context_weight_at_end
+    ]
+    query = query_template.format(context=val_context, weight=format_ctx_weight_func(context_weight), query=val_query)
+    if add_answer_format_prompt:
+        if answer_format_prompt_position == "start":
+            query = f"{ANSWER_FORMAT_PROMPT[answer_format]}\n{query}"
+        else:
+            query = f"{query}\n{ANSWER_FORMAT_PROMPT[answer_format]}"
+    return prompt_template_dict["ROUND"].format(
         query,
         "" if do_eval else val_answer + prompt_template_dict["END_OF_ROUND"] + eos_token
         # Must add EOS_TOKEN during training, otherwise your generation will go on forever!
     )
 
-    return out
-
 
 def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.DataFrame:
-    """Assume that train_df contains 0/1 context weight examples adjacent to each other."""
+    """
+    Assume that train_df contains 0/1 context weight examples adjacent to each other.
+    k - total number of few shot examples (k / 2 pairs)
+    """
     shot_indices = train_df[::2].sample(k // 2, random_state=seed).index
     shot_indices = [(i, i + 1) for i in shot_indices]
     shot_indices = np.array(shot_indices).flatten()
@@ -754,95 +961,100 @@ def sample_few_shot_examples(train_df: pd.DataFrame, k: int, seed: int) -> pd.Da
     return shot_sample
 
 
-# ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
-#     """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
+ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE = (
+    """Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.
 
-# ### Instruction:
-# {}
+### Instruction:
+{}
 
-# ### Input:
-# {}
+### Input:
+{}
 
-# ### Response:
-# {}""",
-#     "Response:",
-# )
+### Response:
+{}""",
+    "Response:",
+)
 
-# GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
-#     """<start_of_turn>user
-# {}
+GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE = (
+    """<start_of_turn>user
+{}
 
-# {}<end_of_turn>
-# <start_of_turn>model
-# {}""",
-#     "<start_of_turn>model",
-# )  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
+{}<end_of_turn>
+<start_of_turn>model
+{}""",
+    "<start_of_turn>model",
+)  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
 
-# GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
-#     """{}
-# Q: {}
-# A: {}""",
-#     "A:",
-# )
+GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE = (
+    """{}
+Q: {}
+A: {}""",
+    "A:",
+)
 
-# PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
-#     """Instruct: {}
-# {}
-# Output: {}""",
-#     "Output:",
-# )
+PHI_PROMPT, PHI_RESPONSE_TEMPLATE = (
+    """Instruct: {}
+{}
+Output: {}""",
+    "Output:",
+)
 
-# MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
-#     "<s>[INST] {}\n{} [/INST] {}",
-#     "[/INST] ",
-# )  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
+MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE = (
+    "<s>[INST] {}\n{} [/INST] {}",
+    "[/INST] ",
+)  # https://www.promptingguide.ai/models/mistral-7b#chat-template-for-mistral-7b-instruct
 
-# LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
-#     """<s>[INST] <<SYS>>
-# {}
-# <</SYS>>
+LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE = (
+    """<s>[INST] <<SYS>>
+{}
+<</SYS>>
 
-# {} [/INST]{}
-# """,
-#     "[/INST]",
-# )  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
+{} [/INST]{}
+""",
+    "[/INST]",
+)  # https://developer.ibm.com/tutorials/awb-prompt-engineering-llama-2/
 
-# LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
-#     """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
+LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE = (
+    """<|begin_of_text|><|start_header_id|>system<|end_header_id|>
 
-# {}<|eot_id|><|start_header_id|>user<|end_header_id|>
+{}<|eot_id|><|start_header_id|>user<|end_header_id|>
 
-# {}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{}
-# """,
-#     "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
-# )  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
+{}<|eot_id|><|start_header_id|>assistant<|end_header_id|>{}
+""",
+    "<|eot_id|><|start_header_id|>assistant<|end_header_id|>",
+)  # https://llama.meta.com/docs/model-cards-and-prompt-formats/meta-llama-3/
 
-# PROMPTS_DICT = {
-#     "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
-#     "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
-#     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-#     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
-#     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-#     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
-#     "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
-#     "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
-# }
+PROMPTS_DICT = {
+    "unsloth/mistral-7b-v0.2-bnb-4bit": (ALPACA_PROMPT, ALPACA_RESPONSE_TEMPLATE),
+    "unsloth/mistral-7b-instruct-v0.2-bnb-4bit": (MISTRAL_INSTRUCT_PROMPT, MISTRAL_INSTRUCT_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT, LLAMA2_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT, LLAMA3_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT, GEMMA_RESPONSE_TEMPLATE),
+    "openai-community/gpt2": (GPT2_PROMPT, GPT2_RESPONSE_TEMPLATE),
+    "microsoft/phi-1_5": (PHI_PROMPT, PHI_RESPONSE_TEMPLATE),
+}
 
 
 from typing import NamedTuple
 
 
 def construct_test_results_dir(
-    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, context_weight_format: str
+    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, in_domain_demonstrations: bool, context_weight_format: str, answer_format_prompt_position: str, add_answer_format_prompt: bool,
+    do_steering: bool, steering_prior_value: float, steering_context_value: float, steering_layer: str
 ):
     eval_id = eval_name
     eval_id += f"-sp_{subsplit}"
-    eval_id += f"-k{k_demonstrations}"
+    eval_id += f"-k{k_demonstrations}" + ("_ID" if in_domain_demonstrations else "_OOD")
     eval_id += f"-cwf_{context_weight_format}"
+    if add_answer_format_prompt:
+        eval_id += f"-afpp_{answer_format_prompt_position}"
+    if do_steering:
+        eval_id += f"-steer_l{steering_layer}_p{steering_prior_value}_c{steering_context_value}"
     return os.path.join(base_results_dir, eval_id)
 
 
@@ -853,3 +1065,4 @@ class EvalConfig(NamedTuple):
     subsplit: str
     k_demonstrations: int
     context_weight_format: str
+    do_steering: bool = False
