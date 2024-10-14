@@ -739,8 +739,8 @@ MODEL_ID_TO_TEMPLATES_DICT = {
         MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
     "Mistral-7B-v0.3": (
-        BASE_TEMPLATE_DICT,
-        BASE_RESPONSE_TEMPLATE,
+        MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
+        MISTRAL_INSTRUCT_RESPONSE_TEMPLATE,
     ),
     "unsloth/mistral-7b-v0.3-bnb-4bit": (
         MISTRAL_INSTRUCT_PROMPT_TEMPLATE_DICT,
@@ -837,7 +837,7 @@ def construct_query_with_demonstrations(
     context_weight_at_end: bool = False,
     do_eval: bool = False,
     answer_format: str = "word",
-    add_answer_format_prompt: bool = True,
+    add_answer_format_prompt: bool = False,
     answer_format_prompt_position: str = "start",
 ) -> str:
     if demonstrations_context_weight_format is None:
