@@ -259,7 +259,7 @@ def evaluate_model_queries_only(
     )  # need to make the labels column
 
     encoded_dataset = queries_only_dataset.map(
-        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt", add_special_tokens=False),
+        lambda examples: tokenizer(examples["query"], padding=True, return_tensors="pt"),
         batched=True,
         batch_size=batch_sz,
     ).select_columns(["input_ids", "attention_mask", "labels", "weight_context"])
@@ -341,10 +341,11 @@ def evaluate_model(
         print(f"Setting batch size to {batch_sz} for eval.")
     tokenizer.padding_side = "left"
     encoded_dataset = dataset.map(
-        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt", add_special_tokens=False),
+        lambda examples: tokenizer(examples["text"], padding=True, return_tensors="pt"),
         batched=True,
         batch_size=batch_sz,
     ).select_columns(["input_ids", "attention_mask", "labels", "weight_context"])
+    print(encoded_dataset[0])
     encoded_dataset.set_format(
         type="torch", columns=["input_ids", "attention_mask", "labels", "weight_context"], device="cuda"
     )  # required for loading correctly into dataloader
@@ -716,7 +717,6 @@ GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE = (
     "<start_of_turn>model",
 )  # https://www.promptingguide.ai/models/gemma#how-to-prompt-gemma-7b
 
-
 MODEL_ID_TO_TEMPLATES_DICT = {
     "unsloth/llama-3-8b-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
     "unsloth/llama-3-8b-Instruct-bnb-4bit": (LLAMA3_PROMPT_TEMPLATE_DICT, LLAMA3_RESPONSE_TEMPLATE),
@@ -752,7 +752,7 @@ MODEL_ID_TO_TEMPLATES_DICT = {
     ),
     "unsloth/llama-2-7b-chat-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
     "unsloth/llama-2-7b-bnb-4bit": (LLAMA2_PROMPT_TEMPLATE_DICT, LLAMA2_RESPONSE_TEMPLATE),
-    "unsloth/gemma-2b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
+    "google/gemma-2-9b": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-2b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
     "unsloth/gemma-7b-it-bnb-4bit": (GEMMA_PROMPT_TEMPLATE_DICT, GEMMA_RESPONSE_TEMPLATE),
@@ -907,7 +907,7 @@ def construct_demonstrations(
             context=row["context"], weight=format_ctx_weight_func(row["weight_context"]), query=row["query"]
         )
         if add_answer_format_prompt:
-            if answer_format_prompt_position == "end":
+            if answer_format_prompt_position == "start":
                 query = f"{ANSWER_FORMAT_PROMPT[answer_format]}\n{query}"
             else:
                 query = f"{query}\n{ANSWER_FORMAT_PROMPT[answer_format]}"
