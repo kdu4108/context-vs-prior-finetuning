@@ -4,6 +4,7 @@ from pyvene import (
     RepresentationConfig,
     IntervenableConfig,
 )
+from collections import OrderedDict
 import pandas as pd
 import re
 import os
@@ -31,7 +32,7 @@ def load_map_training_data(tokenizer, args, PATHS):
                     eos_token=tokenizer.eos_token,
                     val_query=row.query,
                     context_weight=row.weight_context,
-                    context_weight_format=args.context_weight_format,
+                    query_context_weight_format=args.context_weight_format,
                     demonstrations_df=pd.DataFrame(),
                     do_eval=True,
                     val_answer=row.answer
@@ -42,7 +43,7 @@ def load_map_training_data(tokenizer, args, PATHS):
                 eos_token=tokenizer.eos_token,
                 val_query=row.query,
                 context_weight=abs(row.weight_context - 1),
-                context_weight_format=args.context_weight_format,
+                query_context_weight_format=args.context_weight_format,
                 demonstrations_df=pd.DataFrame(),
                 do_eval=True,
                 val_answer=row.prior_answer if row.answer == row.ctx_answer else row.ctx_answer
@@ -53,7 +54,7 @@ def load_map_training_data(tokenizer, args, PATHS):
                     eos_token=tokenizer.eos_token,
                     val_query=row.query,
                     context_weight=row.weight_context,
-                    context_weight_format=args.context_weight_format,
+                    query_context_weight_format=args.context_weight_format,
                     demonstrations_df=pd.DataFrame(),
                     do_eval=True,  
                     val_answer=row.answer
@@ -64,7 +65,7 @@ def load_map_training_data(tokenizer, args, PATHS):
                     eos_token=tokenizer.eos_token,
                     val_query=row.query,
                     context_weight=abs(row.weight_context - 1),
-                    context_weight_format=args.context_weight_format,
+                    query_context_weight_format=args.context_weight_format,
                     demonstrations_df=pd.DataFrame(),
                     do_eval=True,
                     val_answer=row.prior_answer if row.answer == row.ctx_answer else row.ctx_answer
@@ -202,18 +203,13 @@ def filter_confident_samples(args, model, tt, tit, ti, si, amt, amti, batch_size
 def inputs_collator(inputs, device):
     for k, v in inputs.items():
         if "->" in k:
-            inputs[k] = torch.tensor(v)
+            inputs[k] = torch.tensor(v).to(device)
         elif "subspace" in k:
             inputs[k] = v
         elif v is not None:
             inputs[k] = torch.tensor(v).to(device)
     return inputs
 
-def collate_fn(batch):
-    out = {}
-    for k in batch[0].keys():
-        out[k] = [b[k] for b in batch]
-    return out
 
 def compute_loss(logits, labels):
    
@@ -395,3 +391,16 @@ def auto_search(model, tokenizer, patching_arguments, n_layers=42, eps=0.3, thre
 
     print("No more refinement needed")
     return base_range
+
+
+def convert_pyvene_to_nnpatch(state_dict):
+    out = OrderedDict()
+    out["rank"] = torch.tensor(1)
+    for k, v in state_dict.items():
+        if k.startswith("rotate"):
+            out[k.replace("rotate_layer.", "")] = v
+        elif "interchange_dim" in k:
+            continue
+        else:
+            out[k] = v
+    return out

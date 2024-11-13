@@ -293,7 +293,7 @@ def get_data(args, PATHS, tokenizer, device="cuda"):
 
 #     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
     
-#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
+#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="SRC CTX", b_title="CTX", c_title="PRI", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
 
 # def get_plot_prior_double_patch(site_1_config, site_2_config, average_site_config=None, batch_size=24, title="", show_rank=True, show_prob=True):
 #     site_1, site_2, average_site = prepare_sites(site_1_config, site_2_config, average_site_config)
@@ -318,7 +318,7 @@ def get_data(args, PATHS, tokenizer, device="cuda"):
 #     c_prob = get_probs(logits, context_1_answer)
 
 #     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
-#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="Alt PRIOR", b_title="PRIOR", c_title="CTX", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
+#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="SRC PRI", b_title="PRI", c_title="CTX", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
 
 def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_tokens, prior_2_tokens, prior_1_attention_mask, prior_2_attention_mask, prior_1_answer, prior_2_answer, site_1_config, average_site_config=None, batch_size=24, N_LAYERS=42, title="", output_dir="plots", api=Llama3, max_index=None):    
     if max_index is not None:
@@ -351,11 +351,10 @@ def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT PRIOR", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT PRIOR", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-    figp.update_layout(yaxis = dict(tickfont = dict(size=21)))
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
 
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
@@ -386,10 +385,10 @@ def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, contex
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT CTX", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")    
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="ALT CTX", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
@@ -418,10 +417,10 @@ def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, conte
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRIOR", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
@@ -450,10 +449,10 @@ def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRIOR", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRIOR", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
@@ -513,6 +512,6 @@ def generate_title(site_config, prefix):
 
 #     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
     
-#     fig = create_patch_scope_plot(probs=probs, ranks=ranks, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="Alt PRIOR", b_title="PRIOR", c_title="PRIOR", title=None)
+#     fig = create_patch_scope_plot(probs=probs, ranks=ranks, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="SRC PRI", b_title="PRI", c_title="PRI", title=None)
 #     fig.write_image(f"plots/{title}.pdf")
 #     return fig

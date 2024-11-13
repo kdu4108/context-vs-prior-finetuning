@@ -707,11 +707,11 @@ def get_colors(a_name, b_name):
     b_name = b_name.lower()
     if "ctx" in a_name and "ctx" in b_name:
         return COLORS.get_shade(6, 700), COLORS.get_shade(6, 500)
-    elif "prior" in a_name and "prior" in b_name:
+    elif "pri" in a_name and "pri" in b_name:
         return COLORS.get_shade(3, 400), COLORS.get_shade(2, 500)
-    elif "prior" in a_name and "ctx" in b_name:
+    elif "pri" in a_name and "ctx" in b_name:
         return COLORS.get_shade(3, 400), COLORS.get_shade(6, 700)
-    elif "ctx" in a_name and "prior" in b_name:
+    elif "ctx" in a_name and "pri" in b_name:
         return COLORS.get_shade(6, 700), COLORS.get_shade(3, 400),
     
 
@@ -1061,8 +1061,8 @@ column_map = {
     "baseline_one_word_instruction": "Baseline: Intent + One Word Instruction"
 }
 metric_map = {
-    "accuracy": "Accuracy",
-    "paired_accuracy": "PairAcc"
+    "acc": "Accuracy",
+    "pair_acc": "PairAcc"
 }
 
 

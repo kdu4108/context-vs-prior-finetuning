@@ -21,7 +21,6 @@ set -x -e
 
 pip install -e /dlabscratch1/jminder/repositories/nnpatch /dlabscratch1/jminder/repositories/pycolors && pip install circuitsvis python-dotenv --no-deps
 cd /dlabscratch1/jminder/repositories/context-vs-prior-finetuning/
-
 INSTRUCT_MODEL={instruct_model}
 BASE_MODEL={base_model}
 SEED={seed}
@@ -91,7 +90,7 @@ python main.py {train_dataset} -M ${{INSTRUCT_MODEL}} ${{BASE_ARGS}} -CWF instru
 python main.py {train_dataset} -NT -M ${{INSTRUCT_MODEL}} ${{BASE_ARGS}} \
 -EV '[{",".join([get_ds(ds, 0, "instruction", steer=False) for ds in eval_datasets])}]'
 
-python main.py {train_dataset} -NT -M ${{BASE_MODEL}} ${{BASE_ARGS}} \
+python main.py {train_dataset} -NT -M ${{INSTRUCT_MODEL}} ${{BASE_ARGS}} \
 -EV '[{",".join([get_ds(ds, 10, "instruction", steer=False) for ds in eval_datasets])}]'
 
 """
@@ -132,7 +131,7 @@ CONFIGS = {
         "ga": 2,
         "projection_path": "/dlabscratch1/jminder/repositories/context-vs-prior-finetuning/analysis/results_das/Mistral-7B-Instruct-v0.3/Mistral-7B-Instruct-v0.3-L16.pt",
         "prior_value": 5.0,
-        "context_value": 2.0,
+        "context_value": -5.0,
         "steering_layer": 16,
         "ebs": 8,
     },

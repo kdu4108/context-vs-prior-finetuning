@@ -8,7 +8,7 @@ from nnpatch import activation_patch, attribution_patch, Site, Sites, activation
 from nnpatch.api.llama import Llama3
 from nnpatch.site import HeadSite, MultiSite
 
-from model_utils.utils import load_model_and_tokenizer
+from model_utils.utils import load_model_and_tokenizer, construct_paths_and_dataset_kwargs, construct_test_results_dir
 from model_utils.utils import construct_query_with_demonstrations, MODEL_ID_TO_TEMPLATES_DICT
 
 def get_default_parser():
@@ -103,7 +103,7 @@ def paths_from_args(args):
         if finetuned_dir and (args.finetune_training_args is None or args.finetune_training_args == "None"):
             MODEL_NAME = finetuned_dir
         else:
-            MODEL_NAME = f"{args.model_id}-{args.finetune_training_args}-NT-cwf_{args.context_weight_format}"
+            MODEL_NAME = f"{args.model_id}-NT"
 
     print(MODEL_NAME)
     
@@ -115,7 +115,7 @@ def paths_from_args(args):
     sp_args = ""
     sp_args = f"-sp_{args.eval_subsplit}"
 
-    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}{sp_args}-k{args.shots}-cwf_{args.context_weight_format}")
+    RESULTS_DIR = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models", MODEL_NAME,  "results", f"{args.eval_dataset}{sp_args}-k{args.shots}_OOD-cwf_{args.context_weight_format}")
     FEW_SHOT_SAMPLE = os.path.join(RESULTS_DIR, "few_shot_sample.csv")
     TEST_DATA = os.path.join(RESULTS_DIR, "test.csv")
     
