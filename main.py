@@ -148,7 +148,7 @@ def get_args():
         "-ID",
         "--ICL-IN-DOMAIN",
         action="store_true",
-        help="Whether to evaluate on test set with pscores",
+        help="Whether to evaluate on test set with in-domain in context learning examples",
     )
     parser.add_argument(
         "-O",
