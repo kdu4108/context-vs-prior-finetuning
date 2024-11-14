@@ -449,7 +449,7 @@ def main():
                 assert STEERING_LAYER is not None, "Must provide steering layer"
                 assert STEERING_PRIOR_VALUE is not None, "Must provide steering prior value"
                 assert STEERING_CONTEXT_VALUE is not None, "Must provide steering context value"
-                proj = LowRankOrthogonalProjection.load_pretrained(PROJECTION_PATH)
+                proj = LowRankOrthogonalProjection.from_pretrained(PROJECTION_PATH)
                 hook = BinaryHook(
                     proj, layer=STEERING_LAYER, value_a=STEERING_PRIOR_VALUE, value_b=STEERING_CONTEXT_VALUE
                 )

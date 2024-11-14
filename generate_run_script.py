@@ -19,7 +19,7 @@ def get_base_script(train_dataset, in_domain, instruct_model, base_model, seed, 
 
 set -x -e
 
-pip install -e /dlabscratch1/jminder/repositories/nnpatch /dlabscratch1/jminder/repositories/pycolors && pip install circuitsvis python-dotenv --no-deps
+pip install circuitsvis python-dotenv --no-deps
 cd /dlabscratch1/jminder/repositories/context-vs-prior-finetuning/
 INSTRUCT_MODEL={instruct_model}
 BASE_MODEL={base_model}
@@ -114,34 +114,34 @@ def generalisation_script(dataset, model, seed):
 
 CONFIGS = {
     "llama": {
-        "instruct_model": "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B-Instruct",
-        "base_model": "/dlabscratch1/public/llm_weights/llama3.1_hf/Meta-Llama-3.1-8B",
+        "instruct_model": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+        "base_model": "meta-llama/Meta-Llama-3.1-8B",
         "bs": 8,
         "ga": 2,
-        "projection_path": "/dlabscratch1/jminder/repositories/context-vs-prior-finetuning/analysis/results_das/Meta-Llama-3.1-8B-Instruct/Meta-Llama-3.1-8B-Instruct-L16.pt",
+        "projection_path": "jkminder/CTXPRIOR-Projection-Meta-Llama-3.1-8B-Instruct-L16",
         "prior_value": 6,
         "context_value": -6,
         "steering_layer": 16,
         "ebs": 8,
     },
     "mistral": {
-        "instruct_model": "/dlabscratch1/public/llm_weights/mistral_hf/Mistral-7B-Instruct-v0.3",
-        "base_model": "/dlabscratch1/public/llm_weights/mistral_hf/Mistral-7B-v0.3",
+        "instruct_model": "mistralai/Mistral-7B-Instruct-v0.3",
+        "base_model": "mistralai/Mistral-7B-v0.3",
         "bs": 8,
         "ga": 2,
-        "projection_path": "/dlabscratch1/jminder/repositories/context-vs-prior-finetuning/analysis/results_das/Mistral-7B-Instruct-v0.3/Mistral-7B-Instruct-v0.3-L16.pt",
+        "projection_path": "jkminder/CTXPRIOR-Projection-Mistral-7B-Instruct-v0.3-L16",
         "prior_value": 5.0,
         "context_value": -5.0,
         "steering_layer": 16,
         "ebs": 8,
     },
     "gemma": {
-        "instruct_model": "/dlabscratch1/public/llm_weights/gemma_hf/gemma-2-9b-it",
-        "base_model": "/dlabscratch1/public/llm_weights/gemma_hf/gemma-2-9b",
+        "instruct_model": "google/gemma-2-9b-it",
+        "base_model": "google/gemma-2-9b",
         "bs": 2,
         "ebs": 4,
         "ga": 8,
-        "projection_path": "/dlabscratch1/jminder/repositories/context-vs-prior-finetuning/analysis/results_das/gemma-2-9b-it/gemma-2-9b-it-L27.pt",
+        "projection_path": "jkminder/CTXPRIOR-Projection-gemma-2-9b-it-L27",
         "prior_value": -100.0,
         "context_value": 150.0,
         "steering_layer": 27,

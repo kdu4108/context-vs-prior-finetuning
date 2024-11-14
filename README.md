@@ -41,7 +41,21 @@ python main.py BaseFakepedia -M meta-llama/Meta-Llama-3.1-8B-Instruct -S 3 -TS 2
 ```
 
 ### Running the full suite of experiments
-If you have access to a slurm cluster, you can kick off the full suite of experiments via
+Run the following command to submit all experiments for a given model (`llama`, `mistral`, `gemma`).
 ```
-python slurm/batch_submit_main.py
+python generate_run_scripts.py --model-id llama --add-default --add-steering --add-oos-datasets --add-training && bash run_scripts.sh
 ```
+
+## Interpretability Analysis
+
+The scripts for the interpretability analysis are in the `analysis` directory. 
+It is mainly based on the [`nnsight`](http://nnsight.net) and [`nnpatch`](https://github.com/jkminder/nnpatch) libraries.
+
+Check the notebooks `notebooks/analysis_llama.ipynb`, `notebooks/analysis_mistral.ipynb` and `notebooks/analysis_gemma.ipynb` for the analysis in section 5 and 6 of the paper. To regenerate the plots, first generate the orthogonal projections using the notebooks mentioned, run all experiments and then run the `analysis/plots_das.ipynb` notebook.
+
+You can also use the existing projections, which are hosted on huggingface. 
+- [Meta-Llama-3.1-8B-Instruct-L16](https://huggingface.co/jkminder/CTXPRIOR-Projection-Meta-Llama-3.1-8B-Instruct-L16) Projection for the Meta-Llama-3.1 family of models. Layer 16. Recommended steering values: `prior=6`, `context=-6`.
+- [gemma-2-9b-it-L27](https://huggingface.co/jkminder/CTXPRIOR-Projection-gemma-2-9b-it-L27) Projection for the gemma-2-9b-it family of models. Layer 27. Recommended steering values: `prior=-100`, `context=150`.
+- [Mistral-7B-Instruct-v0.3-L16](https://huggingface.co/jkminder/CTXPRIOR-Projection-Mistral-7B-Instruct-v0.3-L16) Projection for the Mistral family of models. Layer 16. Recommended steering values: `prior=5`, `context=-5`.
+
+Check the [`notebooks/demo_steering.ipynb`](notebooks/demo_steering.ipynb) notebook for a demo of how to use the steering hook.
