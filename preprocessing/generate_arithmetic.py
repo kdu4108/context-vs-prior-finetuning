@@ -171,9 +171,6 @@ def preprocess_dataset(df, split):
     df_all["ctx_answer"] = df_all["ctx_answer"].apply(str)
 
     train_df, val_df, test_df = partition_df(df_all, columns=["query"], val_frac=0.01, test_frac=0.9)
-    # train_df = pd.DataFrame()
-    # val_df = pd.DataFrame()
-    # test_df = df_all
 
     full_dir = os.path.join(ROOT_DATA_DIR, "splits", split)
     os.makedirs(full_dir, exist_ok=True)

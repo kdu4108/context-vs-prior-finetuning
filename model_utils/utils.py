@@ -129,16 +129,6 @@ def prepare_peft_model(
     """
     model.gradient_checkpointing_disable()
     model = prepare_model_for_kbit_training(model)  # model becomes float32 instead of bfloat16
-    # peft_config = LoraConfig(
-    #     r=64,
-    #     lora_alpha=16,
-    #     target_modules=target_modules,
-    #     lora_dropout=0.00,
-    #     bias="none",
-    #     task_type="CAUSAL_LM",
-    #     **lora_config_kwargs,
-    # )  # TODO: replace with lora_config_kwargs and add to argparse
-
     model = get_peft_model(model, peft_config)
     model.print_trainable_parameters()
     return model
@@ -178,7 +168,6 @@ def compute_mr(df, is_response_correct_func=response_startswith_label) -> Tuple[
         lambda row: is_response_correct_func(row["predictions"], row["ctx_answer"]), axis=1
     ).sum()
     num_other_answers = len(df) - (num_ctx_answers + num_prior_answers)
-    # import pdb; pdb.set_trace()
     if num_prior_answers + num_ctx_answers == 0:
         print("No correct prior or context answers. Returning None")
         return None, num_other_answers / len(df)
@@ -487,7 +476,6 @@ def construct_paths_and_dataset_kwargs(
     DATASET_KWARGS_IDENTIFIABLE = dict(
         seed=SEED,
         train_size=TRAIN_SIZE,
-        # context_weight_format=CONTEXT_WEIGHT_FORMAT,
     )
     MODEL_KWARGS_IDENTIFIABLE = dict(
         PEFT=PEFT,
@@ -511,10 +499,6 @@ def construct_paths_and_dataset_kwargs(
         f"{SEED}",
     )
     input_dir = os.path.join(data_dir, "inputs")
-
-    # train_path = os.path.join(input_dir, "train.csv")
-    # val_path = os.path.join(input_dir, "val.csv")
-    # test_path = os.path.join(input_dir, "test.csv")
 
     raw_data_dir = get_raw_data_dir(
         dataset_name=DATASET_NAME,
@@ -545,7 +529,9 @@ def construct_paths_and_dataset_kwargs(
     if not NO_TRAIN:
         model_id += f"-peft{'_'.join(LORA_MODULES)}" if MODEL_KWARGS_IDENTIFIABLE["PEFT"] else ""
         model_id += f"-bs{MODEL_KWARGS_IDENTIFIABLE['BATCH_SZ']}"
-        model_id += f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
+        model_id += (
+            f"-ga{MODEL_KWARGS_IDENTIFIABLE['GRAD_ACCUM']}" if MODEL_KWARGS_IDENTIFIABLE["GRAD_ACCUM"] != 1 else ""
+        )
         model_id += "-cwe" if CONTEXT_WEIGHT_AT_END else ""
         model_id += f"-cwf_{CONTEXT_WEIGHT_FORMAT}"
         if ADD_ANSWER_FORMAT_PROMPT:
@@ -648,6 +634,7 @@ def format_prompts(
             examples["context"], examples["query"], examples["answer"], examples["weight_context"]
         )
     ]
+
 
 QUERY_TEMPLATE_NO_INSTRUCTION = """Context: {context}
 Query: {query}"""
@@ -1044,8 +1031,18 @@ from typing import NamedTuple
 
 
 def construct_test_results_dir(
-    base_results_dir: str, eval_name: str, subsplit: str, k_demonstrations: int, in_domain_demonstrations: bool, context_weight_format: str, answer_format_prompt_position: str, add_answer_format_prompt: bool,
-    do_steering: bool, steering_prior_value: float, steering_context_value: float, steering_layer: str
+    base_results_dir: str,
+    eval_name: str,
+    subsplit: str,
+    k_demonstrations: int,
+    in_domain_demonstrations: bool,
+    context_weight_format: str,
+    answer_format_prompt_position: str,
+    add_answer_format_prompt: bool,
+    do_steering: bool,
+    steering_prior_value: float,
+    steering_context_value: float,
+    steering_layer: str,
 ):
     eval_id = eval_name
     eval_id += f"-sp_{subsplit}"

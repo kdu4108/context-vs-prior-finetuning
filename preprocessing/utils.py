@@ -85,9 +85,6 @@ def partition_df(
     Returns:
         the train_df, val_df, test_df
     """
-    # Design choice: since we don't foresee needing to change the train/val/test fractions much, we just produce CSVs (albeit somewhat low-provenance) in this script.
-    # If we wanted to be able to vary train/val/test fractions for some reason (e.g. Flatiron needed to to balance training and test set sizes for different diseases, e.g. in a pan-tumor model),
-    # then we should be more careful about parameterizing the train/val/test fracs.
     if train_keys_df is None or val_keys_df is None or test_keys_df is None:
         keys_df = df[columns].drop_duplicates()
         train_keys_df, test_keys_df = train_test_split(keys_df, test_size=test_frac, random_state=seed)

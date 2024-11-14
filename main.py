@@ -1,3 +1,4 @@
+# Example run:
 # python main.py BaseFakepedia -M meta-llama/Meta-Llama-3.1-8B-Instruct -S 3 -TS 2048 -TSS 1000 -P -BS 8 -GA 2 -CWF float -O
 import argparse
 from dotenv import load_dotenv
@@ -63,13 +64,11 @@ def get_args():
         ],
         help="Name of the dataset subsplit to use.",
     )
-    # Options: nodup_relpid, nodup_relpid_obj, nodup_relpid_subj, nodup_s_or_rel_or_obj, base
     parser.add_argument("-S", "--SEED", type=int, default=0, help="Random seed")
     parser.add_argument(
         "-M",
         "--MODEL_ID",
         type=str,
-        # default="unsloth/gemma-2b-bnb-4bit",
         default="unsloth/gemma-7b-bnb-4bit",
         help="Name of the model to use from huggingface",
     )
@@ -108,7 +107,7 @@ def get_args():
     )
     parser.add_argument(
         "-EV",
-        "--EXTRA_EVALS",
+        "--EVALS",
         type=json.loads,
         # default=[],
         default=[
@@ -188,7 +187,7 @@ def get_args():
         help="Steering value for the prior to use",
     )
     parser.add_argument(
-        "-SCV", 
+        "-SCV",
         "--STEERING-CONTEXT-VALUE",
         type=float,
         default=None,
@@ -222,7 +221,7 @@ def main():
     LORA_MODULES = args.LORA_MODULES
     LOAD_IN_4BIT = args.LOAD_IN_4BIT
     LOAD_IN_8BIT = args.LOAD_IN_8BIT
-    EXTRA_EVALS = args.EXTRA_EVALS
+    EVALS = args.EVALS
     ICL_IN_DOMAIN = args.ICL_IN_DOMAIN
     NO_EVAL = args.NO_EVAL
     DO_PSCORE_EVAL = args.DO_PSCORE_EVAL
@@ -288,10 +287,6 @@ def main():
         ADD_ANSWER_FORMAT_PROMPT=ADD_ANSWER_FORMAT_PROMPT,
         verbose=True,
     )
-    # # GPU stuff
-    # device = "auto"
-    # device = "cuda" if torch.cuda.is_available() else "cpu"
-    # print(f"Using device: {device}")
 
     # wandb stuff
     params_to_log = {k: v for k, v in locals().items() if k.isupper()}
@@ -386,7 +381,6 @@ def main():
             collator = DataCollatorForCompletionOnlyLM(response_template_ids, tokenizer=tokenizer)
             trainer = SFTTrainer(
                 model=model,
-                # tokenizer = tokenizer,
                 data_collator=collator,
                 formatting_func=lambda x: format_prompts(
                     x,
@@ -402,7 +396,6 @@ def main():
                     answer_format_prompt_position=ANSWER_FORMAT_PROMPT_POSITION,
                 ),
                 train_dataset=dataset.train_data,
-                # eval_dataset=dataset.val_data.select(100),
                 max_seq_length=MAX_SEQ_LENGTH,
                 dataset_num_proc=2,
                 packing=False,  # Can make training 5x faster for short sequences.
@@ -412,10 +405,8 @@ def main():
                     per_device_train_batch_size=BATCH_SZ,
                     gradient_accumulation_steps=GRAD_ACCUM,
                     warmup_steps=5,
-                    # max_steps=10,
                     num_train_epochs=1,
                     save_strategy="no",
-                    # save_steps=10,
                     learning_rate=2e-4,
                     fp16=not torch.cuda.is_bf16_supported(),
                     bf16=torch.cuda.is_bf16_supported(),
@@ -425,7 +416,6 @@ def main():
                     lr_scheduler_type="linear",
                     seed=SEED,
                 ),
-                # peft_config=peft_config if PEFT else None, # for some reason this uses more memory and OOMs when the existing way does not? (but also appears to be faster?)
             )
 
             gc.collect()
@@ -447,7 +437,7 @@ def main():
         tokenizer.padding_side = "left"
 
         # Construct full list of eval configs
-        evals: List[EvalConfig] = [EvalConfig(**eval) for eval in EXTRA_EVALS]
+        evals: List[EvalConfig] = [EvalConfig(**eval) for eval in EVALS]
         # print(evals)
         for eval_name, eval_subsplit, eval_k_demonstrations, eval_ctx_weight_format, eval_do_steering in evals:
             eval_do_steering = eval_do_steering == "True"
@@ -455,22 +445,26 @@ def main():
                 f"Evaluating model on test split of {eval_name} using {eval_k_demonstrations} few shot examples from {DATASET_NAME} and with context weight format of `{eval_ctx_weight_format}`."
             )
             if eval_do_steering:
-                assert (PROJECTION_PATH is not None), "Must provide path to projection matrix"
-                assert (STEERING_LAYER is not None), "Must provide steering layer"
-                assert (STEERING_PRIOR_VALUE is not None), "Must provide steering prior value"
-                assert (STEERING_CONTEXT_VALUE is not None), "Must provide steering context value"
+                assert PROJECTION_PATH is not None, "Must provide path to projection matrix"
+                assert STEERING_LAYER is not None, "Must provide steering layer"
+                assert STEERING_PRIOR_VALUE is not None, "Must provide steering prior value"
+                assert STEERING_CONTEXT_VALUE is not None, "Must provide steering context value"
                 proj = LowRankOrthogonalProjection.load_pretrained(PROJECTION_PATH)
-                hook = BinaryHook(proj, layer=STEERING_LAYER, value_a=STEERING_PRIOR_VALUE, value_b=STEERING_CONTEXT_VALUE)
+                hook = BinaryHook(
+                    proj, layer=STEERING_LAYER, value_a=STEERING_PRIOR_VALUE, value_b=STEERING_CONTEXT_VALUE
+                )
                 hook.attach(model)
-                print(f"Attached steering hook {PROJECTION_PATH} to layer {STEERING_LAYER} with prior value {STEERING_PRIOR_VALUE} and context value {STEERING_CONTEXT_VALUE}")
+                print(
+                    f"Attached steering hook {PROJECTION_PATH} to layer {STEERING_LAYER} with prior value {STEERING_PRIOR_VALUE} and context value {STEERING_CONTEXT_VALUE}"
+                )
             else:
                 hook = None
-            
+
             if DO_FEATURE_COLLECTION:
                 print("eval steering", eval_do_steering, type(eval_do_steering))
                 assert not eval_do_steering, "You should not do both feature collection and steering"
-                assert (PROJECTION_PATH is not None), "Must provide path to projection matrix"
-                assert (STEERING_LAYER is not None), "Must provide steering layer"
+                assert PROJECTION_PATH is not None, "Must provide path to projection matrix"
+                assert STEERING_LAYER is not None, "Must provide steering layer"
                 proj = LowRankOrthogonalProjection.load_pretrained(PROJECTION_PATH)
                 feature_collection_hook = FeatureCollectionHook(proj, layer=STEERING_LAYER)
                 print(f"Prepared feature collection hook for layer {STEERING_LAYER}")
@@ -493,7 +487,6 @@ def main():
             test_dataset_path = os.path.join(
                 get_raw_data_dir(dataset_name=eval_name, subsplit=eval_subsplit), "test.csv"
             )
-            # import pdb; pdb.set_trace()
             test_dataset = pd.read_csv(test_dataset_path, dtype={"answer": str, "prior_answer": str, "ctx_answer": str})
             test_dataset = Dataset.from_pandas(test_dataset)
             test_dataset = test_dataset.map(
@@ -574,7 +567,7 @@ def main():
                 steering_prior_value=STEERING_PRIOR_VALUE,
                 steering_context_value=STEERING_CONTEXT_VALUE,
                 steering_layer=STEERING_LAYER,
-                in_domain_demonstrations=ICL_IN_DOMAIN, 
+                in_domain_demonstrations=ICL_IN_DOMAIN,
             )
             os.makedirs(test_results_dir, exist_ok=True)
 
@@ -605,8 +598,9 @@ def main():
                 print(f"Detached steering hook from layer {STEERING_LAYER}")
             if DO_FEATURE_COLLECTION:
                 features = feature_collection_hook.features
-                torch.save(features, os.path.join(test_results_dir, f'features_{STEERING_LAYER}.pt'))
+                torch.save(features, os.path.join(test_results_dir, f"features_{STEERING_LAYER}.pt"))
                 print(f"Saved features to {os.path.join(test_results_dir, f'features_{STEERING_LAYER}.pt')}")
+
     # After loading/preprocessing your dataset, log it as an artifact to W&B
     if LOG_DATASETS:
         print(f"Logging results to w&b run {wandb.run}.")
