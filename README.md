@@ -58,4 +58,4 @@ You can also use the existing projections, which are hosted on huggingface.
 - [gemma-2-9b-it-L27](https://huggingface.co/jkminder/CTXPRIOR-Projection-gemma-2-9b-it-L27) Projection for the gemma-2-9b-it family of models. Layer 27. Recommended steering values: `prior=-100`, `context=150`.
 - [Mistral-7B-Instruct-v0.3-L16](https://huggingface.co/jkminder/CTXPRIOR-Projection-Mistral-7B-Instruct-v0.3-L16) Projection for the Mistral family of models. Layer 16. Recommended steering values: `prior=5`, `context=-5`.
 
-Check the [`notebooks/demo_steering.ipynb`](notebooks/demo_steering.ipynb) notebook for a demo of how to use the steering hook.
+Check the [`analysis/demo_steering.ipynb`](analysis/demo_steering.ipynb) notebook for a demo of how to use the steering hook.
