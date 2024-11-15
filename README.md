@@ -59,3 +59,14 @@ You can also use the existing projections, which are hosted on huggingface.
 - [Mistral-7B-Instruct-v0.3-L16](https://huggingface.co/jkminder/CTXPRIOR-Projection-Mistral-7B-Instruct-v0.3-L16) Projection for the Mistral family of models. Layer 16. Recommended steering values: `prior=5`, `context=-5`.
 
 Check the [`analysis/demo_steering.ipynb`](analysis/demo_steering.ipynb) notebook for a demo of how to use the steering hook.
+
+If you want the basis vector of the subspace, use the following snippet to get it:
+
+```python
+proj = LowRankOrthogonalProjection.from_pretrained("jkminder/CTXPRIOR-Projection-Meta-Llama-3.1-8B-Instruct-L16")
+u = proj.weight
+u.shape # [4096, 1]
+```
+
+
+
