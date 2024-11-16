@@ -9,7 +9,7 @@ git clone git@github.com:kdu4108/context-vs-prior-finetuning.git
 
 Create an environment and install dependencies via virtualenv/pip:
 ```
-python3.10 -m venv env
+python3.11 -m venv env
 source env/bin/activate
 pip install -r requirements.txt
 ```
