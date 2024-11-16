@@ -268,59 +268,8 @@ def get_data(args, PATHS, tokenizer, device="cuda"):
     context_3_attention_mask = attention_mask_context[two_index]
 
     return target_tokens, attention_mask_target, context_1_tokens, context_2_tokens, context_3_tokens, prior_1_tokens, prior_2_tokens, context_1_attention_mask, context_2_attention_mask, context_3_attention_mask, prior_1_attention_mask, prior_2_attention_mask, context_1_answer, context_2_answer, context_3_answer, prior_1_answer, prior_2_answer
-# def get_plot_context_double_patch(site_1_config, site_2_config, average_site_config=None, batch_size=24, title="", show_rank=True, show_prob=True):  
-#     site_1, site_2, average_site = prepare_sites(site_1_config, site_2_config, average_site_config)
-    
-#     average_site = batched_average_cache(nnmodel, all_tokens, all_attn_mask, average_site, batch_size=batch_size)
-    
-#     residuals = []
-#     for i in range(0, context_1_tokens.shape[0], batch_size):
-#         site_1.reset()
-#         site_2.reset()
-#         residuals.append(get_double_patched_residuals(nnmodel, site_1, site_2, context_1_tokens[i:i+batch_size], context_2_tokens[i:i+batch_size], prior_tokens[i:i+batch_size], context_1_attention_mask[i:i+batch_size], context_2_attention_mask[i:i+batch_size], prior_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
 
-        
-#     residuals = torch.cat(residuals, dim=1)
-
-#     aggregation = "median"
-#     logits = patch_scope(nnmodel, tokenizer, residuals)
-#     a_rank = get_ranks(logits, context_2_answer)
-#     b_rank = get_ranks(logits, context_1_answer)
-#     c_rank = get_ranks(logits, prior_answer)
-#     a_prob = get_probs(logits, context_2_answer)
-#     b_prob = get_probs(logits, context_1_answer)
-#     c_prob = get_probs(logits, prior_answer)
-
-#     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
-    
-#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="SRC CTX", b_title="CTX", c_title="PRI", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
-
-# def get_plot_prior_double_patch(site_1_config, site_2_config, average_site_config=None, batch_size=24, title="", show_rank=True, show_prob=True):
-#     site_1, site_2, average_site = prepare_sites(site_1_config, site_2_config, average_site_config)
-#     average_site = batched_average_cache(nnmodel, all_tokens, all_attn_mask, average_site, batch_size=batch_size)
-
-#     residuals = []
-#     for i in range(0, context_1_tokens.shape[0], batch_size):
-#         site_1.reset()
-#         site_2.reset()
-#         residuals.append(get_double_patched_residuals(nnmodel, site_1, site_2, prior_1_tokens[i:i+batch_size], prior_2_tokens[i:i+batch_size], context_1_tokens[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], prior_2_attention_mask[i:i+batch_size], context_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
-
-#     residuals = torch.cat(residuals, dim=1)
-
-
-#     aggregation = "median"
-#     logits = patch_scope(nnmodel, tokenizer, residuals)
-#     a_rank = get_ranks(logits, prior_2_answer)
-#     b_rank = get_ranks(logits, prior_1_answer)
-#     c_rank = get_ranks(logits, context_1_answer)
-#     a_prob = get_probs(logits, prior_2_answer)
-#     b_prob = get_probs(logits, prior_1_answer)
-#     c_prob = get_probs(logits, context_1_answer)
-
-#     probs, ranks = merge_results([a_prob, b_prob, c_prob],[a_rank, b_rank, c_rank])
-#     return create_patch_scope_lplot(probs=probs, ranks=ranks, aggregation=aggregation, b_layers={h: site_1_config[h]["layers"] for h in site_1_config}, a_layers={h: site_2_config[h]["layers"] for h in site_2_config}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config}, a_title="SRC PRI", b_title="PRI", c_title="CTX", title=f"Patching PatchScope: {title}", add_rank=show_rank, add_prob=show_prob)
-
-def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_tokens, prior_2_tokens, prior_1_attention_mask, prior_2_attention_mask, prior_1_answer, prior_2_answer, site_1_config, average_site_config=None, batch_size=24, N_LAYERS=42, title="", output_dir="plots", api=Llama3, max_index=None):    
+def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_tokens, prior_2_tokens, prior_1_attention_mask, prior_2_attention_mask, prior_1_answer, prior_2_answer, site_1_config, average_site_config=None, show_patching_flow=False, batch_size=24, N_LAYERS=42, title="", output_dir="plots", api=Llama3, max_index=None):    
     if max_index is not None:
         prior_1_tokens = prior_1_tokens[:max_index]
         prior_2_tokens = prior_2_tokens[:max_index]
@@ -350,18 +299,18 @@ def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_
     b_prob = get_probs(logits, prior_1_answer)
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
-    
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
-    figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
-
+    if output_dir is not None:
+        figr.write_image(f"{output_dir}/{title}_rank.pdf")
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC PRI", b_title="", c_title="TGT PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
-    figp.write_image(f"{output_dir}/{title}_prob.pdf")
+    if output_dir is not None:
+        figp.write_image(f"{output_dir}/{title}_prob.pdf")
 
     return figr, figp
 
-def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, context_2_tokens, context_1_attention_mask, context_2_attention_mask, context_1_answer, context_2_answer, site_1_config, average_site_config=None, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):
+def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, context_2_tokens, context_1_attention_mask, context_2_attention_mask, context_1_answer, context_2_answer, site_1_config, average_site_config=None, show_patching_flow=False, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):
     site_1, _, average_site = prepare_sites(site_1_config, {}, average_site_config, api=api, model=nnmodel)
     
     if average_site_config is not None: 
@@ -385,15 +334,15 @@ def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, contex
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")    
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="SRC CTX", b_title="", c_title="TGT CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
-def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, prior_1_tokens, context_1_attention_mask, prior_1_attention_mask, context_1_answer, prior_1_answer, site_1_config, average_site_config=None, N_LAYERS=32, batch_size=24, title="", output_dir="plots", api=Llama3):    
+def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, context_1_tokens, prior_1_tokens, context_1_attention_mask, prior_1_attention_mask, context_1_answer, prior_1_answer, site_1_config, average_site_config=None, show_patching_flow=False, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):    
     site_1, _, average_site = prepare_sites(site_1_config, {}, average_site_config, api=api, model=nnmodel)
     if average_site_config is not None: 
         average_site = batched_average_cache(nnmodel, all_tokens, all_attn_mask, average_site, batch_size=batch_size)
@@ -417,16 +366,16 @@ def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, conte
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="CTX", b_title="", c_title="PRI", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
 
-def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_tokens, context_1_tokens, prior_1_attention_mask, context_1_attention_mask,  prior_1_answer, context_1_answer, site_1_config, average_site_config=None, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):
+def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_tokens, context_1_tokens, prior_1_attention_mask, context_1_attention_mask,  prior_1_answer, context_1_answer, site_1_config, average_site_config=None, show_patching_flow=False, batch_size=24, N_LAYERS=32, title="", output_dir="plots", api=Llama3):
     site_1, _, average_site = prepare_sites(site_1_config, {}, average_site_config, api=api, model=nnmodel)
     if average_site_config is not None: 
         average_site = batched_average_cache(nnmodel, all_tokens, all_attn_mask, average_site, batch_size=batch_size)
@@ -449,14 +398,32 @@ def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior
 
     probs, ranks = merge_results([a_prob, b_prob],[a_rank, b_rank])
     
-    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
+    figr = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=True, add_prob=False)
     figr.update_layout(font_family="CMU Serif", width=800)
     figr.write_image(f"{output_dir}/{title}_rank.pdf")
-    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
+    figp = create_patch_scope_lplot(probs=probs, aggregation=aggregation, show_patching_flow=show_patching_flow, ranks=ranks, a_layers={h: site_1_config[h]["layers"] for h in site_1_config}, b_layers={}, avg_layers={h: average_site_config[h]["layers"] for h in average_site_config} if average_site_config is not None else {}, a_title="PRI", b_title="", c_title="CTX", N_LAYERS=N_LAYERS, title=None, add_rank=False, add_prob=True)
     figp.update_layout(font_family="CMU Serif", width=800)
     figp.write_image(f"{output_dir}/{title}_prob.pdf")
     return figr, figp
 
+
+def _get_continuous_ranges(layers):
+    continuous_ranges = []
+    current_range = [layers[0]]
+    for layer in layers[1:]:
+        if layer == current_range[-1] + 1:
+            current_range.append(layer)
+        else:
+            if len(current_range) > 1:
+                continuous_ranges.append(f"{current_range[0]}-{current_range[-1]}")
+            else:
+                continuous_ranges.append(str(current_range[0]))
+            current_range = [layer]
+    if len(current_range) > 1:
+        continuous_ranges.append(f"{current_range[0]}-{current_range[-1]}")
+    else:
+        continuous_ranges.append(str(current_range[0]))
+    return continuous_ranges
 
 def generate_title(site_config, prefix):
     """
@@ -466,25 +433,12 @@ def generate_title(site_config, prefix):
         return prefix + "No patching"
     if "o" in site_config and "layers" in site_config["o"]:
         layers = site_config["o"]["layers"]
-        continuous_ranges = []
-        current_range = [layers[0]]
-        
-        for layer in layers[1:]:
-            if layer == current_range[-1] + 1:
-                current_range.append(layer)
-            else:
-                if len(current_range) > 1:
-                    continuous_ranges.append(f"{current_range[0]}-{current_range[-1]}")
-                else:
-                    continuous_ranges.append(str(current_range[0]))
-                current_range = [layer]
-        
-        if len(current_range) > 1:
-            continuous_ranges.append(f"{current_range[0]}-{current_range[-1]}")
-        else:
-            continuous_ranges.append(str(current_range[0]))
-        
+        continuous_ranges = _get_continuous_ranges(layers)
         return prefix + f"O L{'+'.join(continuous_ranges)}"
+    elif "mlp" in site_config and "layers" in site_config["mlp"]:
+        layers = site_config["mlp"]["layers"]
+        continuous_ranges = _get_continuous_ranges(layers)
+        return prefix + f"MLP L{'+'.join(continuous_ranges)}"
     raise ValueError("Invalid site configuration")
 
 

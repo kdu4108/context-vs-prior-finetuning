@@ -616,10 +616,10 @@ def get_flow_chart_params_l(head, q_y_offset, q_x_offset):
     if head.startswith('q'):
         return 'circle', -RECT_WIDTH, -2 * q_y_offset, head
     elif head.startswith('o'):
-        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, ""
+        return 'square', -0.5 * RECT_WIDTH, 2 * q_y_offset, "\\small MHA"
     elif head.startswith('mlp'):
-        head = head.replace('mlp', 'm')
-        return 'square', 2 * q_x_offset, 3.5 * q_y_offset, head
+        head = head.replace('mlp', '$\\small mlp$')
+        return 'circle', 2 * q_x_offset, 3.5 * q_y_offset, head
     else:
         raise ValueError("Invalid head type. Choose 'q', 'o' or 'mlp'.")
 
@@ -715,61 +715,116 @@ def get_colors(a_name, b_name):
         return COLORS.get_shade(6, 700), COLORS.get_shade(3, 400),
     
 
-def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True):
-    """Creates a patch scope plot with flow charts and line plots."""
+def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, show_patching_flow=True, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True, ):
+    """Creates a patch scope plot with flow charts and line plots.
+     The function is a bit messy, as it does a lot of things.
+    """
     probs, std_devs_probs, probs_median = probs
     ranks, std_devs_ranks, ranks_median = ranks
 
-    num_sp = 3 if add_rank and add_prob else 2
+    num_sp = int(add_rank) + int(add_prob) + int(show_patching_flow)
     num_rows = probs.shape[1]
-    # colors = ['rgba(31, 119, 180, {})', 'rgba(255, 127, 14, {})','rgba(44, 160, 44, {})']
-
     colors = [f"rgba({','.join(str(el) for el in to_rgb(c))}, {{}})" for c in get_colors(a_title, c_title)]
 
+    sp_titles = []
+    sp_heights = []
+    if show_patching_flow:
+        sp_titles.append("<b>Patching Flow</b>")
+        sp_heights.append(0.8)
+    if add_prob:
+        if show_patching_flow:
+            sp_titles.append("<b>Answer Probability</b>")
+        else: 
+            sp_titles.append(f"<span style='color:{colors[0].format(1.0)}'>{a_title}</span>→<span style='color:{colors[1].format(1.0)}'>{c_title}</span>")
+        sp_heights.append(0.6)
+    if add_rank:
+        sp_titles.append("<b>Answer Rank</b>")
+        sp_heights.append(0.6)
+    
+    # colors = ['rgba(31, 119, 180, {})', 'rgba(255, 127, 14, {})','rgba(44, 160, 44, {})']
+
+
     fig = sp.make_subplots(
-        rows=num_sp, cols=1,  # Adjusted to have rows instead of columns
+        rows=num_sp, cols=1,  
         shared_xaxes=True, vertical_spacing=0.40,
         specs=[[{'type': 'scatter'}]] + [[{'type': 'scatter'}] for _ in range(num_sp-1)],
-        row_heights=[0.4, 0.6],
-        subplot_titles=["<b>Patching Flow</b>"] + (["<b>Answer Probability</b>"] if add_prob else []) + (["Answer Rank"] if add_rank else []),
+        row_heights=sp_heights,
+        subplot_titles=sp_titles,
     )
 
-    # Add flow chart  
-    fig.add_trace(go.Scatter(
-        x=[0, N_LAYERS - 1],
-        y=[MAIN_LINE, MAIN_LINE],
-        mode='lines',
-        line=dict(color=colors[num_rows-1].format(1.0), width=2, dash='dot'),
-        showlegend=True,
-        legend="legend1",
-        name="Residual" #"$\\text{Residual}$"
-    ), row=1, col=1)
+    if show_patching_flow:
+        # Add flow chart  
+        fig.add_trace(go.Scatter(
+            x=[0, N_LAYERS - 1],
+            y=[MAIN_LINE, MAIN_LINE],
+            mode='lines',
+            line=dict(color=colors[num_rows-1].format(1.0), width=2, dash='dot'),
+            showlegend=True,
+            legend="legend1",
+            name="Residual" #"$\\text{Residual}$"
+        ), row=1, col=1)
 
-    for head in a_layers:
-        add_flow_chart_l(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[0].format(1.0), residual_color=colors[-1].format(1.0))
-    for head in b_layers:
-        add_flow_chart_l(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[1].format(1.0), residual_color=colors[-1].format(1.0))
-    for head in avg_layers:
-        add_flow_chart_l(fig, MAIN_LINE, avg_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head+'cross', color="white", residual_color=colors[1].format(1.0))
+        for head in a_layers:
+            add_flow_chart_l(fig, PATCH_ALT, a_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[0].format(1.0), residual_color=colors[-1].format(1.0))
+        for head in b_layers:
+            add_flow_chart_l(fig, PATCH_MAIN, b_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head, color=colors[1].format(1.0), residual_color=colors[-1].format(1.0))
+        for head in avg_layers:
+            add_flow_chart_l(fig, MAIN_LINE, avg_layers[head], q_x_offset=q_x_offset, q_y_offset=q_y_offset, head=head+'cross', color="white", residual_color=colors[1].format(1.0))
+
+        # Add legend for flow chart symbols
+        for head, symbol, color in zip(['m', 'q', 'o'], ["diamond", "circle", "square"], ["white"] * 3):
+            if head in a_layers:
+                fig.add_trace(go.Scatter(
+                    x=[None],
+                    y=[None],
+                    mode='markers',
+                    marker=dict(size=14, color=color, symbol=symbol, line=dict(color="black", width=1)),
+                    showlegend=True,
+                    name=get_name(head, shorten=False),
+                    legend="legend1",
+                ), row=1, col=1)
+
+        # Adjust layout for the inverted y-axis and other settings
+        fig.update_yaxes(
+            tickvals=axs_vals_flow,
+                ticktext=[
+                    f'<span style="color:{colors[i].format(1.0)};">' + axs_titles[i] + '</span>'
+                    for i in range(num_rows)
+                ],
+                range=[0.2, 0.8],
+                showline=True,
+                linewidth=1,
+                linecolor='black',
+                ticks="outside",
+                ticklen=6,
+                row=1, col=1,
+                tickangle=-45,  # Optional: rotate the labels
+            )
+    else:
+        assert len(b_layers) == 0 # no patching flow only for single patching
+        assert len(avg_layers) == 0 # no patching flow only for single patching
+        assert len(a_layers) <= 1 # only one site for single patching
+        for head in a_layers:
+            for layer in a_layers[head]:
+                # add annotation below the x-axis
+                fig.add_shape(
+                        type="rect",
+                        x0=layer-0.45, y0=-0.31,
+                        x1=layer+0.45, y1=-0.12,
+                        fillcolor=colors[0].format(1.0),
+                        line=dict(color="black", width=0.),
+                        xref="x",
+                        yref="paper",
+                        layer="below",
+                    )
+
 
 
     axs_titles = [a_title, c_title] if num_rows == 2 else [a_title, b_title, c_title]
     axs_vals_flow = [PATCH_ALT, MAIN_LINE] if num_rows == 2 else [PATCH_ALT, PATCH_MAIN, MAIN_LINE]
     axs_vals_data = [0, 1] if num_rows == 2 else [0, 1, 2]
-    next_row = 2
+    next_row = 2 if show_patching_flow else 1
     
-    # Add legend for flow chart symbols
-    for head, symbol, color in zip(['m', 'q', 'o'], ["diamond", "circle", "square"], ["white"] * 3):
-        if head in a_layers:
-            fig.add_trace(go.Scatter(
-                x=[None],
-                y=[None],
-                mode='markers',
-                marker=dict(size=14, color=color, symbol=symbol, line=dict(color="black", width=1)),
-                showlegend=True,
-                name=get_name(head, shorten=False),
-                legend="legend1",
-            ), row=1, col=1)
 
     # Probability line plot
     if add_prob:
@@ -928,27 +983,12 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         # adjust y-axis range
         fig.update_yaxes(range=[0, 500], row=2, col=1)
 
-    # Adjust layout for the inverted y-axis and other settings
-    fig.update_yaxes(
-        tickvals=axs_vals_flow,
-        ticktext=[
-            f'<span style="color:{colors[i].format(1.0)};">' + axs_titles[i] + '</span>'
-            for i in range(num_rows)
-        ],
-        range=[0.2, 0.8],
-        showline=True,
-        linewidth=1,
-        linecolor='black',
-        ticks="outside",
-        ticklen=6,
-        row=1, col=1,
-        tickangle=-45,  # Optional: rotate the labels
-    )
+ 
 
     if add_prob:
-        fig.update_yaxes(range=[0, 1],row=2, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1, ticks="outside")
+        fig.update_yaxes(range=[0, 1],row=2 if show_patching_flow else 1, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1, ticks="outside")
     if add_rank:
-        fig.update_yaxes(range=[0, 500], title_text="Rank", row=3, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1)
+        fig.update_yaxes(range=[0, 500], title_text="Rank", row=3 if show_patching_flow else 2, col=1, showline=True, linewidth=1, linecolor='black', ticklen=3, tickwidth=0.1)
 
     fig.update_xaxes(
         tickmode='array',
@@ -965,11 +1005,13 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
     
     fig.update_xaxes(
         title=dict(text= "Layer Number", font=dict(size=18)), 
-        row=2, col=1,
+        row=2 if show_patching_flow else 1, col=1,
     )
     
     # Adjust layout dimensions and margins
     height = 360 + (num_sp - 2) * 100
+    if num_sp == 1:
+        height = 200
     fig.update_layout(height=height, width=800, title_text=title, margin=dict(l=40, r=40, t=100 if title else 40, b=0), plot_bgcolor='rgba(0,0,0,0)')
 
   # increase font size
@@ -1004,7 +1046,14 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, aggre
         ),
     )
 
-  
+    if not show_patching_flow:
+        # move legend position to top left
+        fig.update_layout(legend2=dict(x=0.02, y=0.98))
+        # add y-axis title
+        fig.update_yaxes(title_text=f"Answer Probability", row=1, col=1, titlefont=dict(size=18))
+
+    fig.update_layout(font_family="CMU Serif")
+
     return fig
 
 def jupyter_enable_mathjax():
