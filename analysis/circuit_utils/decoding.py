@@ -49,7 +49,7 @@ def patch_scope(nnmodel, tokenizer, residuals, verbose=False):
     all_logits = torch.stack(all_logits)
     return all_logits
 
-def get_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_attention_mask, target_attention_mask, scan=False, validate=False, average_site=None):
+def get_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_attention_mask, target_attention_mask, scan=False, validate=False, average_site=None, return_logits=False, return_residuals=True):
     """
     Performs patched inference on a neural network model and returns the residuals.
 
@@ -74,24 +74,28 @@ def get_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_at
     
     site.reset()
     residuals = [[] for _ in range(len(nnmodel.model.layers))]
-    
+    logits = []
     # Clean run
     with nnmodel.trace(source_tokens, attention_mask=source_attention_mask, scan=scan, validate=validate) as invoker:
         site.cache(nnmodel)
-                
     with nnmodel.trace(target_tokens, attention_mask=target_attention_mask, scan=scan, validate=validate) as invoker:
         site.patch(nnmodel)
         if average_site is not None:
             average_site.patch(nnmodel)
+        if return_residuals:
+            for i in range(len(nnmodel.model.layers)):
+                residuals[i].append(nnmodel.model.layers[i].output[0][:,-1,:].save())
+        if return_logits:
+            logits.append(nnmodel.lm_head.output[:, -1, :].save())
+    if return_residuals:
         for i in range(len(nnmodel.model.layers)):
-            residuals[i].append(nnmodel.model.layers[i].output[0][:,-1,:].save())
-            
-    for i in range(len(nnmodel.model.layers)):
-        residuals[i][-1] = residuals[i][-1].value.detach().cpu()
-            
-    residuals = torch.stack([torch.cat([r.detach() for r in res]) for res in residuals])
+            residuals[i][-1] = residuals[i][-1].value.detach().cpu()
+    
+    residuals = torch.stack([torch.cat([r.detach() for r in res]) for res in residuals]) if return_residuals else None
+    logits = torch.stack([l.detach() for l in logits]) if return_logits else None
     torch.cuda.empty_cache()
-    return residuals
+
+    return residuals, logits
 
 def get_double_patched_residuals(nnmodel, site_1, site_2, source_1_tokens, source_2_tokens, target_tokens, source_1_attention_mask, source_2_attention_mask, target_attention_mask, scan=False, validate=False, average_site=None):
     """
@@ -142,11 +146,19 @@ def get_double_patched_residuals(nnmodel, site_1, site_2, source_1_tokens, sourc
     torch.cuda.empty_cache()
     return residuals
 
-def batch_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_attention_mask, target_attention_mask, batch_size=32, scan=False, validate=False):
+def batch_patched_residuals(nnmodel, site, source_tokens, target_tokens, source_attention_mask, target_attention_mask, batch_size=32, scan=False, validate=False, return_logits=False, return_residuals=True):
     residuals = []
+    logits = []
     for i in range(0, source_tokens.shape[0], batch_size):
-        residuals.append(get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=scan, validate=validate))
-    return torch.cat(residuals)
+        res, logit = get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=scan, validate=validate, return_logits=return_logits, return_residuals=return_residuals)    
+        if return_residuals:
+            residuals.append(res)
+        if return_logits:
+            logits.append(logit)
+
+    residuals = torch.cat(residuals, dim=1) if return_residuals else None
+    logits = torch.cat(logits, dim=1) if return_logits else None
+    return residuals, logits
 
 def get_single_residuals(nnmodel, tokens, attention_mask, layer, scan=False, validate=False):
     residuals = []
@@ -287,7 +299,7 @@ def get_plot_prior_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior_1_
     residuals = []
     for i in range(0, prior_1_tokens.shape[0], batch_size):
         site_1.reset()
-        residuals.append(get_patched_residuals(nnmodel, site_1, prior_2_tokens[i:i+batch_size], prior_1_tokens[i:i+batch_size], prior_2_attention_mask[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
+        residuals.append(get_patched_residuals(nnmodel, site_1, prior_2_tokens[i:i+batch_size], prior_1_tokens[i:i+batch_size], prior_2_attention_mask[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site)[0])
 
     residuals = torch.cat(residuals, dim=1)
 
@@ -321,7 +333,7 @@ def get_plot_context_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, contex
     residuals = []
     for i in range(0, context_1_tokens.shape[0], batch_size):
         site_1.reset()
-        residuals.append(get_patched_residuals(nnmodel, site_1, context_2_tokens[i:i+batch_size], context_1_tokens[i:i+batch_size], context_2_attention_mask[i:i+batch_size], context_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
+        residuals.append(get_patched_residuals(nnmodel, site_1, context_2_tokens[i:i+batch_size], context_1_tokens[i:i+batch_size], context_2_attention_mask[i:i+batch_size], context_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site)[0])
 
     residuals = torch.cat(residuals, dim=1)
 
@@ -385,7 +397,7 @@ def get_plot_weightpc_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, prior
     residuals = []
     for i in range(0, context_1_tokens.shape[0], batch_size):
         site_1.reset()
-        residuals.append(get_patched_residuals(nnmodel, site_1, prior_1_tokens[i:i+batch_size], context_1_tokens[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], context_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
+        residuals.append(get_patched_residuals(nnmodel, site_1, prior_1_tokens[i:i+batch_size], context_1_tokens[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], context_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site)[0])
 
     residuals = torch.cat(residuals, dim=1)
 
