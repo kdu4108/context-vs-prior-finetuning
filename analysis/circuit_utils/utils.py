@@ -91,8 +91,8 @@ def paths_from_args(args):
     TRAIN_DATA = os.path.join(DATAROOT, "splits", args.subsplit, "train.csv")
     DATASET_CONFIG_NAME = f"{args.dataset}_{args.subsplit}-ts{args.finetune_training_samples}"
     
-    models_dir = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models")
     instruct_str = get_instruct_str(args)
+    models_dir = os.path.join(DATAROOT, DATASET_CONFIG_NAME, str(args.finetune_seed), "models")
     finetuned_dir = next((d for d in os.listdir(models_dir) if d.startswith(f"{args.model_id}-") and d.endswith(f"-cwf_{args.context_weight_format}") and ((args.finetuned and "NT" not in d) or (not args.finetuned and "NT" in d)) and dir_is_instruct(args, d)), None)
     if args.finetuned:
         if finetuned_dir and (args.finetune_training_args is None or args.finetune_training_args == "None"):

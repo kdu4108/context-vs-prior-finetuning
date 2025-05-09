@@ -283,7 +283,8 @@ def get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, sour
             # Step 1: Find upper bound
     for i in range(0, target_tokens.shape[0], batch_size):
         site.reset()
-        residuals.append(get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=False, validate=False))
+        residuals_batch, _ = get_patched_residuals(nnmodel, site, source_tokens[i:i+batch_size], target_tokens[i:i+batch_size], source_attention_mask[i:i+batch_size], target_attention_mask[i:i+batch_size], scan=False, validate=False)
+        residuals.append(residuals_batch)
 
     residuals = torch.cat(residuals, dim=1)
 

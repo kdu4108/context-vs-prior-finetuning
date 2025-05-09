@@ -364,7 +364,7 @@ def get_plot_weightcp_patch(nnmodel, tokenizer, all_tokens, all_attn_mask, conte
     residuals = []
     for i in range(0, context_1_tokens.shape[0], batch_size):
         site_1.reset()
-        residuals.append(get_patched_residuals(nnmodel, site_1, context_1_tokens[i:i+batch_size], prior_1_tokens[i:i+batch_size], context_1_attention_mask[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site))
+        residuals.append(get_patched_residuals(nnmodel, site_1, context_1_tokens[i:i+batch_size], prior_1_tokens[i:i+batch_size], context_1_attention_mask[i:i+batch_size], prior_1_attention_mask[i:i+batch_size], scan=False, validate=False, average_site=average_site)[0])
 
 
     residuals = torch.cat(residuals, dim=1)

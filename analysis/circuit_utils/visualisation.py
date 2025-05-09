@@ -715,7 +715,7 @@ def get_colors(a_name, b_name):
         return COLORS.get_shade(6, 700), COLORS.get_shade(3, 400),
     
 
-def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, show_patching_flow=True, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True, ):
+def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, show_patching_flow=True, aggregation="median", a_title="Alt CTX", b_title="CTX", c_title="PRIOR", title=None, q_x_offset=0.03, q_y_offset=0.1, N_LAYERS=32, add_rank=True, add_prob=True, layers_start_at_one=True):
     """Creates a patch scope plot with flow charts and line plots.
      The function is a bit messy, as it does a lot of things.
     """
@@ -993,7 +993,7 @@ def create_patch_scope_lplot(probs, ranks, a_layers, b_layers, avg_layers, show_
     fig.update_xaxes(
         tickmode='array',
         tickvals=list(range(N_LAYERS)),
-        ticktext=[str(i) for i in range(N_LAYERS)],
+        ticktext=[str(i) for i in range(N_LAYERS)] if not layers_start_at_one else [str(i) for i in range(1, N_LAYERS+1)],
         showgrid=True,tickfont=dict(size=18),
         ticks="outside",
         ticklen=6,
@@ -1091,7 +1091,7 @@ def format_label(label, latex=False):
         label = label.replace("INSTRUCTION", ' 🫵')
         label = label.replace("FS", "ICL")
         words = label.replace("-", " ").split()
-        colored_label = ''.join([f'<span style="color:{get_label_color(word, COLORS)};">{"<b>" if word in ["ICL", "FT", "ZS"] else ""} {word} {"</b>" if word in ["ICL", "FT", "ZS"] else ""}</span>' for word in words])
+        colored_label = ''.join([f'<span style="color:{get_label_color(word, COLORS)};font-size:24px;">{"<b>" if word in ["ICL", "FT", "ZS"] else ""} {word} {"</b>" if word in ["ICL", "FT", "ZS"] else ""}</span>' for word in words])
     return colored_label
 
 def to_standart_label(label):
