@@ -125,3 +125,8 @@ wsproto==1.2.0
 xxhash==3.5.0
 yarl==1.17.1
 zipp==3.21.0
+circuitsvis==1.43.3
+kaleido==0.2.1
+pycolors @ git+https://github.com/jkminder/pycolors.git@main
+pyvene @ git+https://github.com/jkminder/pyvene.git@main
+python-dotenv==1.0.1
