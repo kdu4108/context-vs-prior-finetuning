@@ -330,7 +330,7 @@ def auto_search(model, tokenizer, patching_arguments, n_layers=42, eps=0.3, thre
         }
         site = config_to_site(site_config, api=api, model=model)
         p_mean_source, p_mean_target = get_patch_scope_probs(nnmodel, tokenizer, source_tokens, target_tokens, source_attention_mask, target_attention_mask, source_answer, target_answer, site, batch_size=batch_size, max_index=max_index)
-        print(f"Upper bound: {upper_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {upper_bound}: {p_mean_source[upper_bound, 0].item():.4f}")
+        print(f"Upper bound: {upper_bound} - Max probability: {p_mean_source.max().item():.4f}, Probability at layer {upper_bound-1}: {p_mean_source[upper_bound-1, 0].item():.4f}")
 
     print(f"Upper bound: {upper_bound}")
 
@@ -373,7 +373,7 @@ def auto_search(model, tokenizer, patching_arguments, n_layers=42, eps=0.3, thre
 
     print("Step 3: Refining...")
     while p_mean_source[-1, 0].item() <= p_mean_target[-1, 0].item() + eps:
-        print("Refining...")
+        print(f"Refining (Probability source: {p_mean_source[-1, 0].item():.4f}, Probability target: {p_mean_target[-1, 0].item():.4f}, Difference: {p_mean_source[-1, 0].item() - p_mean_target[-1, 0].item():.4f} (eps={eps}))...")
         print("Current base range: ", base_range)
         for candidate in range(max(base_range), n_layers):
             if p_mean_source[candidate-1, 0].item() - p_mean_source[candidate, 0].item() > phi and candidate not in base_range:
